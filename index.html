@@ -333,7 +333,7 @@
       scanning = !scanning;
       if (scanning) {
         startBtn.innerText = 'Dừng quét';
-        intervalId = setInterval(scanFrame, 1500);
+        intervalId = setInterval(scanFrame, 500);
       } else {
         startBtn.innerText = 'Bắt đầu quét';
         clearInterval(intervalId);
