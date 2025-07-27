@@ -75,7 +75,7 @@
     <select id="shelfLife">
       <option value="6">6 tháng</option>
       <option value="9">9 tháng</option>
-      <option value="10">10 tháng</option>
+      <option value="12">12 tháng</option>
     </select>
   </div>
 
@@ -135,14 +135,14 @@
     }
     updateWeekday();
 
-    // Hàm cộng tháng và ép về ngày cuối nếu không tồn tại
+    // Hàm cộng tháng và điều chỉnh ngày cuối
     function addMonthsAdjust(date, months) {
       const year = date.getFullYear();
       const month = date.getMonth();
       const day = date.getDate();
 
       const newMonth = month + months;
-      const newDate = new Date(year, newMonth, 1); // tạm ngày 1
+      const newDate = new Date(year, newMonth, 1);
       const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
 
       const finalDay = Math.min(day, lastDayOfMonth);
@@ -215,6 +215,22 @@
       return tempCanvas;
     }
 
+    // Hàm chụp ảnh khi quét đúng
+    function captureImage() {
+      const imageCanvas = document.createElement('canvas');
+      imageCanvas.width = canvas.width;
+      imageCanvas.height = canvas.height;
+      const imageCtx = imageCanvas.getContext('2d');
+      imageCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const link = document.createElement('a');
+      link.href = imageCanvas.toDataURL('image/png');
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+      link.download = `capture_${timestamp}.png`;
+      link.click();
+    }
+
     // Quét OCR
     async function scanFrame() {
       if (!scanning) return;
@@ -256,12 +272,17 @@
 
       if (isMatch && lastStatus !== 'correct') {
         playBeep();
+        captureImage();       // CHỤP ẢNH
+        scanning = false;     // DỪNG QUÉT
+        clearInterval(intervalId);
+        startBtn.innerText = 'Bắt đầu quét';
         lastStatus = 'correct';
       } else if (!isMatch) {
         lastStatus = 'wrong';
       }
     }
 
+    // Sự kiện
     testBeepBtn.addEventListener('click', () => { initAudio(); playBeep(); });
     startBtn.addEventListener('click', () => {
       initAudio();
