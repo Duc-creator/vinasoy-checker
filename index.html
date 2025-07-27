@@ -128,31 +128,46 @@
     // Hiển thị thứ hiện tại (1-7)
     function updateWeekday() {
       const today = new Date();
-      const day = today.getDay(); // 0 = Chủ Nhật
+      const day = today.getDay(); 
       const weekday = (day === 0) ? 1 : day + 1;
       document.getElementById('weekday').value = weekday;
       return weekday;
     }
     updateWeekday();
 
+    // Hàm cộng tháng và ép về ngày cuối nếu không tồn tại
+    function addMonthsAdjust(date, months) {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const day = date.getDate();
+
+      const newMonth = month + months;
+      const newDate = new Date(year, newMonth, 1); // tạm ngày 1
+      const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
+
+      const finalDay = Math.min(day, lastDayOfMonth);
+      return new Date(newDate.getFullYear(), newDate.getMonth(), finalDay);
+    }
+
     // Tạo danh sách date code
     function generateDateCodes() {
       const batchCode = document.getElementById('batchCode').value.trim();
       const weekday = document.getElementById('weekday').value;
+      const shelfMonths = parseInt(document.getElementById('shelfLife').value);
 
       if (batchCode.length !== 3) {
         alert('Vui lòng nhập mã lô 3 ký tự (VD: 086)');
         return;
       }
 
-      // Lấy ngày hiện tại ddmmyy
       const today = new Date();
-      const dd = String(today.getDate()).padStart(2, '0');
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const yy = String(today.getFullYear()).slice(2);
+      const expiry = addMonthsAdjust(today, shelfMonths);
+
+      const dd = String(expiry.getDate()).padStart(2, '0');
+      const mm = String(expiry.getMonth() + 1).padStart(2, '0');
+      const yy = String(expiry.getFullYear()).slice(2);
       const dateCode = dd + mm + yy;
 
-      // Danh sách line A đến I
       const lines = ['A','B','C','D','E','F','G','H','I'];
       let result = '';
       lines.forEach(line => {
@@ -247,7 +262,6 @@
       }
     }
 
-    // Sự kiện
     testBeepBtn.addEventListener('click', () => { initAudio(); playBeep(); });
     startBtn.addEventListener('click', () => {
       initAudio();
