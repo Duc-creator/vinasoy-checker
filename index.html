@@ -91,6 +91,27 @@
     <input type="text" id="weekday" readonly>
   </div>
 
+  <!-- Chọn line đơn -->
+  <div>
+    <label>
+      <input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line
+    </label>
+  </div>
+  <div id="lineSelectWrapper" style="display:none;">
+    <label for="lineSelect">Chọn line:</label>
+    <select id="lineSelect">
+      <option value="A">A</option>
+      <option value="B">B</option>
+      <option value="C">C</option>
+      <option value="D">D</option>
+      <option value="E">E</option>
+      <option value="F">F</option>
+      <option value="G">G</option>
+      <option value="H">H</option>
+      <option value="I">I</option>
+    </select>
+  </div>
+
   <!-- Nút tạo danh sách date -->
   <button id="generateBtn">Tạo danh sách date</button>
   <textarea id="dateList" rows="10" placeholder="Danh sách date code..."></textarea>
@@ -154,6 +175,8 @@
       const batchCode = document.getElementById('batchCode').value.trim();
       const weekday = document.getElementById('weekday').value;
       const shelfMonths = parseInt(document.getElementById('shelfLife').value);
+      const singleLineCheck = document.getElementById('singleLineCheck').checked;
+      const lineSelect = document.getElementById('lineSelect').value;
 
       if (batchCode.length !== 3) {
         alert('Vui lòng nhập mã lô 3 ký tự (VD: 086)');
@@ -168,14 +191,27 @@
       const yy = String(expiry.getFullYear()).slice(2);
       const dateCode = dd + mm + yy;
 
-      const lines = ['A','B','C','D','E','F','G','H','I'];
       let result = '';
-      lines.forEach(line => {
-        result += `${dateCode} ${batchCode}${line}${weekday}\n`;
-      });
-      targetTextArea.value = result.trim();
+      if (singleLineCheck) {
+        // Chỉ tạo cho 1 line được chọn
+        result = `${dateCode} ${batchCode}${lineSelect}${weekday}`;
+      } else {
+        // Tạo cho tất cả line
+        const lines = ['A','B','C','D','E','F','G','H','I'];
+        lines.forEach(line => {
+          result += `${dateCode} ${batchCode}${line}${weekday}\n`;
+        });
+        result = result.trim();
+      }
+      targetTextArea.value = result;
     }
     document.getElementById('generateBtn').addEventListener('click', generateDateCodes);
+
+    // Hiển thị dropdown line khi tích checkbox
+    document.getElementById('singleLineCheck').addEventListener('change', function() {
+      const lineSelectWrapper = document.getElementById('lineSelectWrapper');
+      lineSelectWrapper.style.display = this.checked ? 'block' : 'none';
+    });
 
     // Âm thanh Beep
     function initAudio() {
@@ -215,7 +251,7 @@
       return tempCanvas;
     }
 
-    // Hàm chụp ảnh khi quét đúng
+    // Gửi ảnh về PC
     function captureImage() {
       const imageCanvas = document.createElement('canvas');
       imageCanvas.width = canvas.width;
@@ -223,12 +259,20 @@
       const imageCtx = imageCanvas.getContext('2d');
       imageCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const link = document.createElement('a');
-      link.href = imageCanvas.toDataURL('image/png');
-      const now = new Date();
-      const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
-      link.download = `capture_${timestamp}.png`;
-      link.click();
+      const imageData = imageCanvas.toDataURL('image/png');
+
+      // Thay IP dưới đây bằng IP máy tính của bạn
+      fetch('http://192.168.1.100:5000/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ img: imageData })
+      })
+      .then(res => res.json())
+      .then(data => {
+        console.log('Ảnh đã gửi về PC:', data.file);
+        alert('Ảnh đã lưu về PC: ' + data.file);
+      })
+      .catch(err => console.error('Lỗi gửi ảnh:', err));
     }
 
     // Quét OCR
@@ -272,8 +316,8 @@
 
       if (isMatch && lastStatus !== 'correct') {
         playBeep();
-        captureImage();       // CHỤP ẢNH
-        scanning = false;     // DỪNG QUÉT
+        captureImage();       // Gửi ảnh về PC
+        scanning = false;     // Dừng quét
         clearInterval(intervalId);
         startBtn.innerText = 'Bắt đầu quét';
         lastStatus = 'correct';
