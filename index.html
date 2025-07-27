@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OCR Date Checker (Tesseract.js)</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 10px; background: #f8f8f8; }
+    h1 { color: #333; }
+    textarea, button, input, select {
+      padding: 10px; margin: 10px 0; font-size: 1em; width: 90%; max-width: 400px;
+    }
+    button {
+      background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;
+    }
+    button:active { background: #0056b3; }
+    #result { font-size: 1.5em; margin-top: 10px; font-weight: bold; }
+    .ok { color: green; }
+    .fail { color: red; }
+    #ocrText { white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px; background: #fff; padding: 10px; border-radius: 8px; max-width: 400px; margin: auto; }
+    #capturedImage { margin-top: 15px; max-width: 240px; border: 2px solid #444; border-radius: 8px; display: none; }
+    .camera-wrapper { position: relative; display: inline-block; }
+    video { border: 2px solid #ccc; border-radius: 8px; margin: 10px 0; width: 320px; height: 240px; object-fit: cover; }
+    #overlay { position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); pointer-events: none; top: 50%; left: 50%; width: 200px; height: 70px; transform: translate(-50%, -50%); box-shadow: 0 0 10px rgba(255,0,0,0.5); }
+  </style>
+</head>
+<body>
+  <h1>OCR Date Checker</h1>
+  
+  <h3>Tạo danh sách date code</h3>
+  <label>Hạn sử dụng (tháng):</label>
+  <select id="monthSelect">
+    <option value="6">6 tháng</option>
+    <option value="10">10 tháng</option>
+  </select>
+  
+  <button id="generateBtn">Tạo danh sách date</button>
+  <textarea id="targetText" rows="5" placeholder="Danh sách date sẽ xuất hiện tại đây..."></textarea>
+  
+  <button id="startBtn">Bắt đầu quét</button>
+  <button id="stopBtn" style="background: red;">Dừng</button>
+  
+  <div class="camera-wrapper">
+    <video id="video" autoplay playsinline></video>
+    <div id="overlay"></div>
+  </div>
+  <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
+  
+  <div id="result"></div>
+  <div id="ocrText"></div>
+  <img id="capturedImage" alt="Ảnh chụp">
+
+  <!-- Thư viện Tesseract.js -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const resultDiv = document.getElementById('result');
+    const ocrTextDiv = document.getElementById('ocrText');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const generateBtn = document.getElementById('generateBtn');
+    const monthSelect = document.getElementById('monthSelect');
+    const targetTextArea = document.getElementById('targetText');
+    const capturedImage = document.getElementById('capturedImage');
+
+    let scanning = false;
+    let targetLines = [];
+
+    async function openCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: 640, height: 480 } });
+        video.srcObject = stream;
+      } catch (e) {
+        alert('Không mở được camera: ' + e);
+      }
+    }
+    openCamera();
+
+    function captureOverlay() {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const overlay = document.getElementById('overlay');
+      const videoRect = video.getBoundingClientRect();
+      const overlayRect = overlay.getBoundingClientRect();
+      const scaleX = canvas.width / videoRect.width;
+      const scaleY = canvas.height / videoRect.height;
+      const cropX = (overlayRect.left - videoRect.left) * scaleX;
+      const cropY = (overlayRect.top - videoRect.top) * scaleY;
+      const cropWidth = overlayRect.width * scaleX;
+      const cropHeight = overlayRect.height * scaleY;
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = cropWidth;
+      tempCanvas.height = cropHeight;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.putImageData(ctx.getImageData(cropX, cropY, cropWidth, cropHeight), 0, 0);
+      return tempCanvas;
+    }
+
+    function saveSnapshot(canvas, filename = 'ocr_match.png') {
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = filename;
+      link.click();
+    }
+
+    function normalizeText(text) {
+      return text
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase()
+        .replace(/O/g, '0')
+        .replace(/I/g, '1')
+        .replace(/L/g, '1');
+    }
+
+    async function scanLoop() {
+      const validPattern = /^\d{6}\s\d{3}[A-I][1-7]$/;
+      while (scanning) {
+        const overlayCanvas = captureOverlay();
+        const { data: { text } } = await Tesseract.recognize(overlayCanvas, 'eng');
+        let normalized = normalizeText(text);
+
+        ocrTextDiv.innerText = normalized || '(Không nhận diện được)';
+
+        if (validPattern.test(normalized) && targetLines.includes(normalized)) {
+          resultDiv.innerHTML = '✅ ĐÚNG: ' + normalized;
+          resultDiv.className = 'ok';
+          capturedImage.src = overlayCanvas.toDataURL("image/png");
+          capturedImage.style.display = "block";
+          saveSnapshot(overlayCanvas, `${normalized.replace(/\s+/g, '_')}.png`);
+          scanning = false;
+          break;
+        } else {
+          resultDiv.innerHTML = '❌ KHÔNG KHỚP';
+          resultDiv.className = 'fail';
+        }
+        await new Promise(r => setTimeout(r, 1000)); // OCR mỗi 1 giây
+      }
+    }
+
+    startBtn.addEventListener('click', () => {
+      targetLines = targetTextArea.value.split('\n').map(l => l.trim()).filter(l => l !== '');
+      if (targetLines.length === 0) {
+        alert('Vui lòng tạo danh sách date trước.');
+        return;
+      }
+      scanning = true;
+      scanLoop();
+    });
+
+    stopBtn.addEventListener('click', () => {
+      scanning = false;
+      resultDiv.innerText = '⏹ Dừng quét';
+      resultDiv.className = '';
+    });
+
+    // Sinh danh sách date
+    generateBtn.addEventListener('click', () => {
+      const months = parseInt(monthSelect.value, 10);
+      const targetDate = new Date();
+      targetDate.setMonth(targetDate.getMonth() + months);
+
+      const dd = String(targetDate.getDate()).padStart(2, '0');
+      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const yy = String(targetDate.getFullYear()).slice(-2);
+      const dateCode = dd + mm + yy;
+
+      const machines = ['A','B','C','D','E','F','G','H','I'];
+      const lines = [];
+      for (let lot = 1; lot <= 300; lot++) {
+        const lotStr = String(lot).padStart(3, '0');
+        for (const m of machines) {
+          for (let t = 1; t <= 7; t++) {
+            lines.push(`${dateCode} ${lotStr}${m}${t}`);
+          }
+        }
+      }
+      targetTextArea.value = lines.join('\n');
+      alert(`Đã tạo ${lines.length} date code cho ${months} tháng tới (dạng ${dateCode}).`);
+    });
+  </script>
+</body>
+</html>
