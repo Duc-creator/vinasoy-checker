@@ -5,10 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OCR Date Checker</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 10px; background: #f8f8f8; }
+    body { 
+      font-family: sans-serif; 
+      text-align: center; 
+      padding: 10px; 
+      background: #f8f8f8; 
+    }
     h1 { color: #333; }
     textarea, input, select, button {
-      padding: 10px; margin: 10px 0; font-size: 1em; width: 90%; max-width: 400px;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 1em;
+      width: 90%;
+      max-width: 400px;
     }
     button {
       background: #007bff;
@@ -21,11 +30,40 @@
     #result { font-size: 1.5em; margin-top: 10px; font-weight: bold; }
     .ok { color: green; }
     .fail { color: red; }
-    #ocrText { white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px; background: #fff; padding: 10px; border-radius: 8px; max-width: 400px; margin: auto; }
-
-    .camera-wrapper { position: relative; display: inline-block; }
-    video { border: 2px solid #ccc; border-radius: 8px; margin: 10px 0; width: 240px; height: 180px; object-fit: cover; }
-    #overlay { position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); pointer-events: none; top: 50%; left: 50%; width: 150px; height: 50px; transform: translate(-50%, -50%); box-shadow: 0 0 10px rgba(255,0,0,0.5); }
+    #ocrText { 
+      white-space: pre-line; 
+      font-size: 1em; 
+      color: #333; 
+      margin-top: 10px; 
+      background: #fff; 
+      padding: 10px; 
+      border-radius: 8px; 
+      max-width: 400px; 
+      margin: auto; 
+    }
+    .camera-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    video {
+      border: 2px solid #ccc;
+      border-radius: 8px;
+      margin: 10px 0;
+      width: 240px;
+      height: 180px;
+      object-fit: cover;
+    }
+    #overlay {
+      position: absolute;
+      border: 2px solid rgba(255, 0, 0, 0.7);
+      pointer-events: none;
+      top: 50%;
+      left: 50%;
+      width: 150px;
+      height: 50px;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px rgba(255,0,0,0.5);
+    }
   </style>
 </head>
 <body>
@@ -55,7 +93,7 @@
 
   <!-- Nút tạo danh sách date -->
   <button id="generateBtn">Tạo danh sách date</button>
-  <textarea id="dateList" rows="8" placeholder="Danh sách date code..."></textarea>
+  <textarea id="dateList" rows="10" placeholder="Danh sách date code..."></textarea>
 
   <!-- Nút quét OCR -->
   <button id="startBtn">Bắt đầu quét</button>
@@ -114,6 +152,7 @@
       const yy = String(today.getFullYear()).slice(2);
       const dateCode = dd + mm + yy;
 
+      // Danh sách line A đến I
       const lines = ['A','B','C','D','E','F','G','H','I'];
       let result = '';
       lines.forEach(line => {
@@ -214,7 +253,7 @@
       initAudio();
       scanning = !scanning;
       if (scanning) {
-        startBtn.innerText = 'Dừng';
+        startBtn.innerText = 'Dừng quét';
         intervalId = setInterval(scanFrame, 1500);
       } else {
         startBtn.innerText = 'Bắt đầu quét';
