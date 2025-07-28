@@ -137,7 +137,6 @@
     const resultDiv = document.getElementById('result');
     const ocrTextDiv = document.getElementById('ocrText');
     const startBtn = document.getElementById('startBtn');
-    const testBeepBtn = document.getElementById('testBeepBtn');
     const targetTextArea = document.getElementById('dateList');
 
     let scanning = false;
@@ -376,7 +375,6 @@
     }
 
     // Sự kiện
-    testBeepBtn.addEventListener('click', () => { initAudio(); playBeep(); });
     startBtn.addEventListener('click', () => {
       initAudio();
       scanning = !scanning;
