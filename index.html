@@ -262,7 +262,7 @@
       const imageData = imageCanvas.toDataURL('image/png');
 
       // Thay IP dưới đây bằng IP máy tính của bạn
-      fetch('http://192.168.1.100:5000/upload', {
+      fetch('http://10.110.98.130:5000/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ img: imageData })
