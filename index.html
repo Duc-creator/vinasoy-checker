@@ -75,7 +75,7 @@
     <select id="shelfLife">
       <option value="6">6 tháng</option>
       <option value="9">9 tháng</option>
-      <option value="12">12 tháng</option>
+      <option value="10">10 tháng</option>
     </select>
   </div>
 
@@ -118,7 +118,6 @@
 
   <!-- Nút quét OCR -->
   <button id="startBtn">Bắt đầu quét</button>
-  <button id="testBeepBtn" style="background:green;">Test Beep</button>
 
   <!-- Camera -->
   <div class="camera-wrapper">
@@ -145,7 +144,10 @@
     let intervalId = null;
     let lastStatus = null;
     let audioCtx = null;
-    let wrongCount = 0; // đếm số lần sai liên tiếp
+
+    // Bộ đếm sai và lịch sử khoảng cách
+    let wrongCount = 0;
+    let recentDistances = [];
 
     // Hàm tính khoảng cách Levenshtein
     function levenshtein(a, b) {
@@ -282,7 +284,7 @@
       imageCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       const imageData = imageCanvas.toDataURL('image/png');
-      fetch('http://192.168.1.100:5000/upload', { // Đổi IP PC của bạn
+      fetch('http://192.168.1.100:5000/upload', { // Đổi IP PC
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ img: imageData })
@@ -344,7 +346,7 @@
       }
 
       resultDiv.innerHTML = isMatch ? '✅ ĐÚNG' : '❌ SAI';
-      resultDiv.className = isMatch ? 'ok' : 'fail';
+      resultDiv.className = isMatch ? 'ok': 'fail';
 
       if (isMatch) {
         playBeep();
@@ -354,15 +356,21 @@
         startBtn.innerText = 'Bắt đầu quét';
         lastStatus = 'correct';
         wrongCount = 0;
+        recentDistances = [];
       } else {
         wrongCount++;
+        recentDistances.push(minDistance);
+        if (recentDistances.length > 3) recentDistances.shift();
         lastStatus = 'wrong';
-        if (wrongCount >= 3 && minDistance <= 2) {
+
+        const hasCloseMatch = recentDistances.some(d => d <= 2);
+        if (wrongCount >= 3 && hasCloseMatch) {
           scanning = false;
           clearInterval(intervalId);
           startBtn.innerText = 'Bắt đầu quét';
-          alert(`Chuỗi OCR gần đúng nhưng sai ${minDistance} ký tự.\nOCR: ${cleaned}\nGần giống: ${closestMatch}`);
+          alert(`Trong 3 lần quét có 1 lần OCR gần đúng (sai ≤ 2 ký tự).\nOCR: ${cleaned}\nGần giống: ${closestMatch}`);
           wrongCount = 0;
+          recentDistances = [];
         }
       }
     }
@@ -374,7 +382,7 @@
       scanning = !scanning;
       if (scanning) {
         startBtn.innerText = 'Dừng quét';
-        intervalId = setInterval(scanFrame, 1000); // Quét mỗi 1 giây
+        intervalId = setInterval(scanFrame, 800); // Quét mỗi 0.8 giây
       } else {
         startBtn.innerText = 'Bắt đầu quét';
         clearInterval(intervalId);
