@@ -129,7 +129,7 @@
   <div id="result"></div>
   <div id="ocrText"></div>
 
-  <!-- Tesseract và OpenCV -->
+  <!-- Thư viện -->
   <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
@@ -149,9 +149,9 @@
 
     let wrongCount = 0;
     let recentDistances = [];
-    let prevGray = null;  // frame trước khi xử lý chống rung
+    let prevGray = null;
 
-    // Hàm tính Levenshtein
+    // Levenshtein
     function levenshtein(a, b) {
       const matrix = [];
       for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -172,21 +172,18 @@
       return matrix[b.length][a.length];
     }
 
-    // Cập nhật thứ
     function updateWeekday() {
       const today = new Date();
-      const day = today.getDay(); 
+      const day = today.getDay();
       const weekday = (day === 0) ? 1 : day + 1;
       document.getElementById('weekday').value = weekday;
     }
     updateWeekday();
 
-    // Hàm cộng tháng với ngày cuối tháng
     function addMonthsAdjust(date, months) {
       const year = date.getFullYear();
       const month = date.getMonth();
       const day = date.getDate();
-
       const newMonth = month + months;
       const newDate = new Date(year, newMonth, 1);
       const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
@@ -194,7 +191,6 @@
       return new Date(newDate.getFullYear(), newDate.getMonth(), finalDay);
     }
 
-    // Tạo danh sách date code
     function generateDateCodes() {
       const batchCode = document.getElementById('batchCode').value.trim();
       const weekday = document.getElementById('weekday').value;
@@ -227,7 +223,6 @@
       targetTextArea.value = result;
     }
     document.getElementById('generateBtn').addEventListener('click', generateDateCodes);
-
     document.getElementById('singleLineCheck').addEventListener('change', function() {
       document.getElementById('lineSelectWrapper').style.display = this.checked ? 'block' : 'none';
     });
@@ -248,11 +243,10 @@
       setTimeout(() => oscillator.stop(), 200);
     }
 
-    // Mở camera
     async function openCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         video.srcObject = stream;
       } catch (e) {
@@ -273,25 +267,21 @@
         return frameCanvas;
       }
 
-      // Optical Flow (simple)
       let diff = new cv.Mat();
       cv.absdiff(src, prevGray, diff);
-      let motion = cv.mean(diff)[0]; 
+      let motion = cv.mean(diff)[0];
       if (motion > 10) {
-        // Bù rung nhẹ
         let M = cv.matFromArray(2, 3, cv.CV_64F, [1, 0, -1, 0, 1, -1]);
         cv.warpAffine(src, src, M, src.size(), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
         M.delete();
       }
       src.copyTo(prevGray);
       cv.imshow(frameCanvas, src);
-
       src.delete();
       diff.delete();
       return frameCanvas;
     }
 
-    // Tiền xử lý ảnh
     function preprocessImage(srcCanvas) {
       const stabilized = stabilizeFrame(srcCanvas);
       const tempCanvas = document.createElement('canvas');
@@ -302,27 +292,27 @@
       return tempCanvas;
     }
 
-    // OCR quét
     async function scanFrame() {
       if (!scanning) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Tính toán crop dựa vào overlay
       const overlay = document.getElementById('overlay');
       const videoRect = video.getBoundingClientRect();
       const overlayRect = overlay.getBoundingClientRect();
-      const scaleX = canvas.width / videoRect.width;
-      const scaleY = canvas.height / videoRect.height;
+      const scaleX = video.videoWidth / videoRect.width;
+      const scaleY = video.videoHeight / videoRect.height;
 
       const cropX = (overlayRect.left - videoRect.left) * scaleX;
       const cropY = (overlayRect.top - videoRect.top) * scaleY;
       const cropWidth = overlayRect.width * scaleX;
       const cropHeight = overlayRect.height * scaleY;
 
+      // Canvas cắt đúng vùng overlay
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = cropWidth;
       tempCanvas.height = cropHeight;
       const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.putImageData(ctx.getImageData(cropX, cropY, cropWidth, cropHeight), 0, 0);
+      tempCtx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
       const preCanvas = preprocessImage(tempCanvas);
       const { data: { text } } = await Tesseract.recognize(preCanvas, 'eng', {
@@ -379,7 +369,6 @@
       }
     }
 
-    // Start button
     startBtn.addEventListener('click', () => {
       initAudio();
       scanning = !scanning;
