@@ -296,16 +296,21 @@
       if (!scanning) return;
 
       // Tính toán crop dựa vào overlay
-      const overlay = document.getElementById('overlay');
-      const videoRect = video.getBoundingClientRect();
-      const overlayRect = overlay.getBoundingClientRect();
-      const scaleX = video.videoWidth / videoRect.width;
-      const scaleY = video.videoHeight / videoRect.height;
-
-      const cropX = (overlayRect.left - videoRect.left) * scaleX;
-      const cropY = (overlayRect.top - videoRect.top) * scaleY;
-      const cropWidth = overlayRect.width * scaleX;
-      const cropHeight = overlayRect.height * scaleY;
+       const overlay = document.getElementById('overlay');
+      
+      // Tính vị trí và kích thước overlay TƯƠNG ĐỐI với video
+      const overlayPercent = {
+        x: overlay.offsetLeft / video.offsetWidth,
+        y: overlay.offsetTop / video.offsetHeight,
+        width: overlay.offsetWidth / video.offsetWidth,
+        height: overlay.offsetHeight / video.offsetHeight
+      };
+      
+      // Tính vùng crop theo kích thước thực tế của video stream
+      const cropX = video.videoWidth * overlayPercent.x;
+      const cropY = video.videoHeight * overlayPercent.y;
+      const cropWidth = video.videoWidth * overlayPercent.width;
+      const cropHeight = video.videoHeight * overlayPercent.height;
 
       // Canvas cắt đúng vùng overlay
       const tempCanvas = document.createElement('canvas');
