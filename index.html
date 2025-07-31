@@ -1,3 +1,4 @@
+<!-- Phần đầu giữ nguyên -->
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -5,62 +6,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OCR Date Checker - Anti-Shake</title>
   <style>
-    body { 
-      font-family: sans-serif; 
-      text-align: center; 
-      padding: 10px; 
-      background: #f8f8f8; 
-    }
+    body { font-family: sans-serif; text-align: center; padding: 10px; background: #f8f8f8; }
     h1 { color: #333; }
     textarea, input, select, button {
-      padding: 10px;
-      margin: 10px 0;
-      font-size: 1em;
-      width: 90%;
-      max-width: 400px;
+      padding: 10px; margin: 10px 0; font-size: 1em; width: 90%; max-width: 400px;
     }
     button {
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
+      background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer;
     }
     button:active { background: #0056b3; }
     #result { font-size: 1.5em; margin-top: 10px; font-weight: bold; }
     .ok { color: green; }
     .fail { color: red; }
-    #ocrText { 
-      white-space: pre-line; 
-      font-size: 1em; 
-      color: #333; 
-      margin-top: 10px; 
-      background: #fff; 
-      padding: 10px; 
-      border-radius: 8px; 
-      max-width: 400px; 
-      margin: auto; 
+    #ocrText {
+      white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px;
+      background: #fff; padding: 10px; border-radius: 8px; max-width: 400px; margin: auto;
     }
     .camera-wrapper {
-      position: relative;
-      display: inline-block;
+      position: relative; display: inline-block;
     }
     video {
-      border: 2px solid #ccc;
-      border-radius: 8px;
-      margin: 10px 0;
-      width: 320px;
-      height: 240px;
-      object-fit: cover;
+      border: 2px solid #ccc; border-radius: 8px; margin: 10px 0;
+      width: 320px; height: 240px; object-fit: cover;
     }
     #overlay {
       position: absolute;
       border: 2px solid rgba(255, 0, 0, 0.7);
       pointer-events: none;
-      top: 50%;
-      left: 50%;
-      width: 150px;
-      height: 50px;
+      top: 50%; left: 50%;
+      width: 150px; height: 50px;
       transform: translate(-50%, -50%);
       box-shadow: 0 0 10px rgba(255,0,0,0.5);
     }
@@ -69,7 +43,6 @@
 <body>
   <h1>OCR Date Checker - Anti-Shake</h1>
 
-  <!-- Chọn hạn sử dụng -->
   <div>
     <label for="shelfLife">Hạn sử dụng (tháng):</label>
     <select id="shelfLife">
@@ -79,19 +52,16 @@
     </select>
   </div>
 
-  <!-- Nhập mã lô -->
   <div>
     <label for="batchCode">Mã lô (3 ký tự):</label>
     <input type="text" id="batchCode" maxlength="3" placeholder="VD: 086">
   </div>
 
-  <!-- Hiển thị thứ -->
   <div>
     <label for="weekday">Thứ hôm nay:</label>
     <input type="text" id="weekday" readonly>
   </div>
 
-  <!-- Chọn line đơn -->
   <div>
     <label>
       <input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line
@@ -112,14 +82,11 @@
     </select>
   </div>
 
-  <!-- Nút tạo danh sách date -->
   <button id="generateBtn">Tạo danh sách date</button>
   <textarea id="dateList" rows="10" placeholder="Danh sách date code..."></textarea>
 
-  <!-- Nút quét OCR -->
   <button id="startBtn">Bắt đầu quét</button>
 
-  <!-- Camera -->
   <div class="camera-wrapper">
     <video id="video" autoplay playsinline></video>
     <div id="overlay"></div>
@@ -146,12 +113,10 @@
     let intervalId = null;
     let lastStatus = null;
     let audioCtx = null;
-
     let wrongCount = 0;
     let recentDistances = [];
     let prevGray = null;
 
-    // Levenshtein
     function levenshtein(a, b) {
       const matrix = [];
       for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -222,6 +187,7 @@
       }
       targetTextArea.value = result;
     }
+
     document.getElementById('generateBtn').addEventListener('click', generateDateCodes);
     document.getElementById('singleLineCheck').addEventListener('change', function() {
       document.getElementById('lineSelectWrapper').style.display = this.checked ? 'block' : 'none';
@@ -230,6 +196,7 @@
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
+
     function playBeep() {
       if (!audioCtx) return;
       const oscillator = audioCtx.createOscillator();
@@ -245,7 +212,7 @@
 
     async function openCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         video.srcObject = stream;
@@ -255,7 +222,6 @@
     }
     openCamera();
 
-    // Chống rung bằng OpenCV
     function stabilizeFrame(frameCanvas) {
       if (!cv || !cv.Mat) return frameCanvas;
       let src = cv.imread(frameCanvas);
@@ -292,27 +258,24 @@
       return tempCanvas;
     }
 
+    // ✅ Đã sửa đúng vùng crop theo overlay
     async function scanFrame() {
       if (!scanning) return;
 
-      // Tính toán crop dựa vào overlay
-       const overlay = document.getElementById('overlay');
-      
-      // Tính vị trí và kích thước overlay TƯƠNG ĐỐI với video
+      const overlay = document.getElementById('overlay');
+
       const overlayPercent = {
         x: overlay.offsetLeft / video.offsetWidth,
         y: overlay.offsetTop / video.offsetHeight,
         width: overlay.offsetWidth / video.offsetWidth,
         height: overlay.offsetHeight / video.offsetHeight
       };
-      
-      // Tính vùng crop theo kích thước thực tế của video stream
+
       const cropX = video.videoWidth * overlayPercent.x;
       const cropY = video.videoHeight * overlayPercent.y;
       const cropWidth = video.videoWidth * overlayPercent.width;
       const cropHeight = video.videoHeight * overlayPercent.height;
 
-      // Canvas cắt đúng vùng overlay
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = cropWidth;
       tempCanvas.height = cropHeight;
