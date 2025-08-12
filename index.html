@@ -5,12 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OCR Date Checker</title>
   <style>
-    body { 
-      font-family: sans-serif; 
-      text-align: center; 
-      padding: 10px; 
-      background: #f8f8f8; 
-    }
+    body { font-family: sans-serif; text-align: center; padding: 10px; background: #f8f8f8; }
     h1 { color: #333; }
     textarea, input, select, button {
       padding: 10px;
@@ -30,40 +25,10 @@
     #result { font-size: 1.5em; margin-top: 10px; font-weight: bold; }
     .ok { color: green; }
     .fail { color: red; }
-    #ocrText { 
-      white-space: pre-line; 
-      font-size: 1em; 
-      color: #333; 
-      margin-top: 10px; 
-      background: #fff; 
-      padding: 10px; 
-      border-radius: 8px; 
-      max-width: 400px; 
-      margin: auto; 
-    }
-    .camera-wrapper {
-      position: relative;
-      display: inline-block;
-    }
-    video {
-      border: 2px solid #ccc;
-      border-radius: 8px;
-      margin: 10px 0;
-      width: 320px;
-      height: 240px;
-      object-fit: cover;
-    }
-    #overlay {
-      position: absolute;
-      border: 2px solid rgba(255, 0, 0, 0.7);
-      pointer-events: none;
-      top: 50%;
-      left: 50%;
-      width: 150px;
-      height: 50px;
-      transform: translate(-50%, -50%);
-      box-shadow: 0 0 10px rgba(255,0,0,0.5);
-    }
+    #ocrText { white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px; background: #fff; padding: 10px; border-radius: 8px; max-width: 400px; margin: auto; }
+    .camera-wrapper { position: relative; display: inline-block; }
+    video { border: 2px solid #ccc; border-radius: 8px; margin: 10px 0; width: 320px; height: 240px; object-fit: cover; }
+    #overlay { position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); pointer-events: none; top: 50%; left: 50%; width: 150px; height: 50px; transform: translate(-50%, -50%); box-shadow: 0 0 10px rgba(255,0,0,0.5); }
   </style>
 </head>
 <body>
@@ -93,9 +58,7 @@
 
   <!-- Chọn line đơn -->
   <div>
-    <label>
-      <input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line
-    </label>
+    <label><input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line</label>
   </div>
   <div id="lineSelectWrapper" style="display:none;">
     <label for="lineSelect">Chọn line:</label>
@@ -116,14 +79,15 @@
   <button id="generateBtn">Tạo danh sách date</button>
   <textarea id="dateList" rows="10" placeholder="Danh sách date code..."></textarea>
 
-  <!-- Nút quét OCR -->
-  <button id="startBtn">Bắt đầu quét</button>
+  <!-- Nút chụp OCR -->
+  <button id="captureBtn">Chụp & OCR</button>
 
   <!-- Camera -->
   <div class="camera-wrapper">
     <video id="video" autoplay playsinline></video>
     <div id="overlay"></div>
   </div>
+
   <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
 
   <div id="result"></div>
@@ -132,23 +96,11 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
     const resultDiv = document.getElementById('result');
     const ocrTextDiv = document.getElementById('ocrText');
-    const startBtn = document.getElementById('startBtn');
     const targetTextArea = document.getElementById('dateList');
-
-    let scanning = false;
-    let intervalId = null;
-    let lastStatus = null;
     let audioCtx = null;
 
-    // Bộ đếm sai và lịch sử khoảng cách
-    let wrongCount = 0;
-    let recentDistances = [];
-
-    // Hàm tính khoảng cách Levenshtein
     function levenshtein(a, b) {
       const matrix = [];
       for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -169,31 +121,25 @@
       return matrix[b.length][a.length];
     }
 
-    // Hiển thị thứ hiện tại (1-7)
     function updateWeekday() {
       const today = new Date();
-      const day = today.getDay(); 
+      const day = today.getDay();
       const weekday = (day === 0) ? 1 : day + 1;
       document.getElementById('weekday').value = weekday;
-      return weekday;
     }
     updateWeekday();
 
-    // Hàm cộng tháng và điều chỉnh ngày cuối
     function addMonthsAdjust(date, months) {
       const year = date.getFullYear();
       const month = date.getMonth();
       const day = date.getDate();
-
       const newMonth = month + months;
       const newDate = new Date(year, newMonth, 1);
       const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
-
       const finalDay = Math.min(day, lastDayOfMonth);
       return new Date(newDate.getFullYear(), newDate.getMonth(), finalDay);
     }
 
-    // Tạo danh sách date code
     function generateDateCodes() {
       const batchCode = document.getElementById('batchCode').value.trim();
       const weekday = document.getElementById('weekday').value;
@@ -208,7 +154,6 @@
 
       const today = new Date();
       const expiry = addMonthsAdjust(today, shelfMonths);
-
       const dd = String(expiry.getDate()).padStart(2, '0');
       const mm = String(expiry.getMonth() + 1).padStart(2, '0');
       const yy = String(expiry.getFullYear()).slice(2);
@@ -228,13 +173,10 @@
     }
     document.getElementById('generateBtn').addEventListener('click', generateDateCodes);
 
-    // Hiển thị dropdown line khi tích checkbox
     document.getElementById('singleLineCheck').addEventListener('change', function() {
-      const lineSelectWrapper = document.getElementById('lineSelectWrapper');
-      lineSelectWrapper.style.display = this.checked ? 'block' : 'none';
+      document.getElementById('lineSelectWrapper').style.display = this.checked ? 'block' : 'none';
     });
 
-    // Âm thanh Beep
     function initAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
@@ -251,11 +193,10 @@
       setTimeout(() => oscillator.stop(), 200);
     }
 
-    // Mở camera
     async function openCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } 
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
         });
         video.srcObject = stream;
       } catch (e) {
@@ -264,7 +205,6 @@
     }
     openCamera();
 
-    // Tiền xử lý ảnh
     function preprocessImage(srcCanvas) {
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = srcCanvas.width * 2;
@@ -274,49 +214,30 @@
       return tempCanvas;
     }
 
-    // Gửi ảnh về PC
     function captureImage() {
-      const imageCanvas = document.createElement('canvas');
-      imageCanvas.width = canvas.width;
-      imageCanvas.height = canvas.height;
-      const imageCtx = imageCanvas.getContext('2d');
-      imageCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const imageData = imageCanvas.toDataURL('image/png');
-      fetch('http://192.168.1.100:5000/upload', { // Đổi IP PC
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ img: imageData })
-      })
-      .then(res => res.json())
-      .then(data => console.log('Ảnh đã gửi về PC:', data.file))
-      .catch(err => console.error('Lỗi gửi ảnh:', err));
+      // Tùy chỉnh nếu cần gửi ảnh về server
     }
 
-    // Quét OCR
-    async function scanFrame() {
-      if (!scanning) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+    async function captureAndOCR() {
+      initAudio();
       const overlay = document.getElementById('overlay');
-      const videoRect = video.getBoundingClientRect();
-      const overlayRect = overlay.getBoundingClientRect();
 
-      const scaleX = canvas.width / videoRect.width;
-      const scaleY = canvas.height / videoRect.height;
+      const scaleX = video.videoWidth / video.clientWidth;
+      const scaleY = video.videoHeight / video.clientHeight;
 
-      const cropX = (overlayRect.left - videoRect.left) * scaleX;
-      const cropY = (overlayRect.top - videoRect.top) * scaleY;
-      const cropWidth = overlayRect.width * scaleX;
-      const cropHeight = overlayRect.height * scaleY;
+      const cropX = overlay.offsetLeft * scaleX;
+      const cropY = overlay.offsetTop * scaleY;
+      const cropWidth = overlay.clientWidth * scaleX;
+      const cropHeight = overlay.clientHeight * scaleY;
 
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = cropWidth;
       tempCanvas.height = cropHeight;
       const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.putImageData(ctx.getImageData(cropX, cropY, cropWidth, cropHeight), 0, 0);
+      tempCtx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
       const preCanvas = preprocessImage(tempCanvas);
+
       const { data: { text } } = await Tesseract.recognize(preCanvas, 'eng', {
         tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
         tessedit_pageseg_mode: 7
@@ -330,7 +251,6 @@
       let closestMatch = null;
       let minDistance = Infinity;
 
-      // Tìm match gần nhất
       for (const line of targetLines) {
         if (cleaned === line) {
           isMatch = true;
@@ -350,42 +270,12 @@
       if (isMatch) {
         playBeep();
         captureImage();
-        scanning = false;
-        clearInterval(intervalId);
-        startBtn.innerText = 'Bắt đầu quét';
-        lastStatus = 'correct';
-        wrongCount = 0;
-        recentDistances = [];
-      } else {
-        wrongCount++;
-        recentDistances.push(minDistance);
-        if (recentDistances.length > 3) recentDistances.shift();
-        lastStatus = 'wrong';
-
-        const hasCloseMatch = recentDistances.some(d => d <= 2);
-        if (wrongCount >= 3 && hasCloseMatch) {
-          scanning = false;
-          clearInterval(intervalId);
-          startBtn.innerText = 'Bắt đầu quét';
-          alert(`Trong 3 lần quét có 1 lần OCR gần đúng (sai ≤ 2 ký tự).\nOCR: ${cleaned}\nGần giống: ${closestMatch}`);
-          wrongCount = 0;
-          recentDistances = [];
-        }
+      } else if (minDistance <= 2) {
+        alert(`OCR gần đúng (sai ≤ 2 ký tự).\nOCR: ${cleaned}\nGần giống: ${closestMatch}`);
       }
     }
 
-    // Sự kiện
-    startBtn.addEventListener('click', () => {
-      initAudio();
-      scanning = !scanning;
-      if (scanning) {
-        startBtn.innerText = 'Dừng quét';
-        intervalId = setInterval(scanFrame, 800); // Quét mỗi 0.8 giây
-      } else {
-        startBtn.innerText = 'Bắt đầu quét';
-        clearInterval(intervalId);
-      }
-    });
+    document.getElementById('captureBtn').addEventListener('click', captureAndOCR);
   </script>
 </body>
 </html>
