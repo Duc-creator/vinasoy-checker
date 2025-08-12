@@ -8,33 +8,28 @@
     body { font-family: sans-serif; text-align: center; padding: 10px; background: #f8f8f8; }
     h1 { color: #333; }
     textarea, input, select, button {
-      padding: 10px;
-      margin: 10px 0;
-      font-size: 1em;
-      width: 90%;
-      max-width: 400px;
+      padding: 10px; margin: 10px 0; font-size: 1em; width: 90%; max-width: 400px;
     }
-    button {
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
+    button { background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; }
     button:active { background: #0056b3; }
     #result { font-size: 1.5em; margin-top: 10px; font-weight: bold; }
     .ok { color: green; }
     .fail { color: red; }
-    #ocrText { white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px; background: #fff; padding: 10px; border-radius: 8px; max-width: 400px; margin: auto; }
+    #ocrText { white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px; background: #fff;
+      padding: 10px; border-radius: 8px; max-width: 400px; margin: auto; }
     .camera-wrapper { position: relative; display: inline-block; }
     video { border: 2px solid #ccc; border-radius: 8px; margin: 10px 0; width: 320px; height: 240px; object-fit: cover; }
-    #overlay { position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); pointer-events: none; top: 50%; left: 50%; width: 150px; height: 50px; transform: translate(-50%, -50%); box-shadow: 0 0 10px rgba(255,0,0,0.5); }
+    #overlay {
+      position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); pointer-events: none;
+      top: 50%; left: 50%; width: 150px; height: 50px; transform: translate(-50%, -50%);
+      box-shadow: 0 0 10px rgba(255,0,0,0.5);
+    }
   </style>
 </head>
 <body>
   <h1>OCR Date Checker</h1>
 
-  <!-- Chọn hạn sử dụng -->
+  <!-- Các phần giao diện giữ nguyên -->
   <div>
     <label for="shelfLife">Hạn sử dụng (tháng):</label>
     <select id="shelfLife">
@@ -43,22 +38,18 @@
       <option value="10">10 tháng</option>
     </select>
   </div>
-
-  <!-- Nhập mã lô -->
   <div>
     <label for="batchCode">Mã lô (3 ký tự):</label>
     <input type="text" id="batchCode" maxlength="3" placeholder="VD: 086">
   </div>
-
-  <!-- Hiển thị thứ -->
   <div>
     <label for="weekday">Thứ hôm nay:</label>
     <input type="text" id="weekday" readonly>
   </div>
-
-  <!-- Chọn line đơn -->
   <div>
-    <label><input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line</label>
+    <label>
+      <input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line
+    </label>
   </div>
   <div id="lineSelectWrapper" style="display:none;">
     <label for="lineSelect">Chọn line:</label>
@@ -75,19 +66,15 @@
     </select>
   </div>
 
-  <!-- Nút tạo danh sách date -->
   <button id="generateBtn">Tạo danh sách date</button>
   <textarea id="dateList" rows="10" placeholder="Danh sách date code..."></textarea>
 
-  <!-- Nút chụp OCR -->
-  <button id="captureBtn">Chụp & OCR</button>
+  <button id="captureBtn">📷 Chụp & OCR</button>
 
-  <!-- Camera -->
   <div class="camera-wrapper">
     <video id="video" autoplay playsinline></video>
     <div id="overlay"></div>
   </div>
-
   <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
 
   <div id="result"></div>
@@ -96,31 +83,13 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script>
     const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
     const resultDiv = document.getElementById('result');
     const ocrTextDiv = document.getElementById('ocrText');
     const targetTextArea = document.getElementById('dateList');
-    let audioCtx = null;
 
-    function levenshtein(a, b) {
-      const matrix = [];
-      for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-      for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-      for (let i = 1; i <= b.length; i++) {
-        for (let j = 1; j <= a.length; j++) {
-          if (b.charAt(i - 1) === a.charAt(j - 1)) {
-            matrix[i][j] = matrix[i - 1][j - 1];
-          } else {
-            matrix[i][j] = Math.min(
-              matrix[i - 1][j - 1] + 1,
-              matrix[i][j - 1] + 1,
-              matrix[i - 1][j] + 1
-            );
-          }
-        }
-      }
-      return matrix[b.length][a.length];
-    }
-
+    // Hiển thị thứ
     function updateWeekday() {
       const today = new Date();
       const day = today.getDay();
@@ -129,70 +98,50 @@
     }
     updateWeekday();
 
+    // Cộng tháng
     function addMonthsAdjust(date, months) {
       const year = date.getFullYear();
       const month = date.getMonth();
       const day = date.getDate();
       const newMonth = month + months;
       const newDate = new Date(year, newMonth, 1);
-      const lastDayOfMonth = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
-      const finalDay = Math.min(day, lastDayOfMonth);
-      return new Date(newDate.getFullYear(), newDate.getMonth(), finalDay);
+      const lastDay = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
+      return new Date(newDate.getFullYear(), newDate.getMonth(), Math.min(day, lastDay));
     }
 
-    function generateDateCodes() {
+    // Tạo date code
+    document.getElementById('generateBtn').addEventListener('click', () => {
       const batchCode = document.getElementById('batchCode').value.trim();
       const weekday = document.getElementById('weekday').value;
       const shelfMonths = parseInt(document.getElementById('shelfLife').value);
-      const singleLineCheck = document.getElementById('singleLineCheck').checked;
+      const singleLine = document.getElementById('singleLineCheck').checked;
       const lineSelect = document.getElementById('lineSelect').value;
+      if (batchCode.length !== 3) { alert('Nhập mã lô 3 ký tự'); return; }
 
-      if (batchCode.length !== 3) {
-        alert('Vui lòng nhập mã lô 3 ký tự (VD: 086)');
-        return;
-      }
-
-      const today = new Date();
-      const expiry = addMonthsAdjust(today, shelfMonths);
+      const expiry = addMonthsAdjust(new Date(), shelfMonths);
       const dd = String(expiry.getDate()).padStart(2, '0');
       const mm = String(expiry.getMonth() + 1).padStart(2, '0');
       const yy = String(expiry.getFullYear()).slice(2);
       const dateCode = dd + mm + yy;
 
       let result = '';
-      if (singleLineCheck) {
+      if (singleLine) {
         result = `${dateCode} ${batchCode}${lineSelect}${weekday}`;
       } else {
-        const lines = ['A','B','C','D','E','F','G','H','I'];
-        lines.forEach(line => {
+        ['A','B','C','D','E','F','G','H','I'].forEach(line => {
           result += `${dateCode} ${batchCode}${line}${weekday}\n`;
         });
         result = result.trim();
       }
       targetTextArea.value = result;
-    }
-    document.getElementById('generateBtn').addEventListener('click', generateDateCodes);
+    });
 
+    // Toggle chọn line
     document.getElementById('singleLineCheck').addEventListener('change', function() {
       document.getElementById('lineSelectWrapper').style.display = this.checked ? 'block' : 'none';
     });
 
-    function initAudio() {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    function playBeep() {
-      if (!audioCtx) return;
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.start();
-      setTimeout(() => oscillator.stop(), 200);
-    }
-
+    // Mở camera
     async function openCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -205,77 +154,68 @@
     }
     openCamera();
 
+    // Tiền xử lý ảnh nâng cao
     function preprocessImage(srcCanvas) {
+      const scale = 3; // phóng to 3 lần
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = srcCanvas.width * 2;
-      tempCanvas.height = srcCanvas.height * 2;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(srcCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+      tempCanvas.width = srcCanvas.width * scale;
+      tempCanvas.height = srcCanvas.height * scale;
+      const tctx = tempCanvas.getContext('2d');
+
+      // Vẽ phóng to
+      tctx.drawImage(srcCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Lấy ảnh và xử lý pixel
+      const imgData = tctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        // grayscale
+        const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+        // tăng tương phản + threshold
+        const bw = gray > 140 ? 255 : 0;
+        data[i] = data[i+1] = data[i+2] = bw;
+      }
+      tctx.putImageData(imgData, 0, 0);
       return tempCanvas;
     }
 
-    function captureImage() {
-      // Tùy chỉnh nếu cần gửi ảnh về server
-    }
+    // Chụp & OCR
+    document.getElementById('captureBtn').addEventListener('click', async () => {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    async function captureAndOCR() {
-      initAudio();
       const overlay = document.getElementById('overlay');
+      const videoRect = video.getBoundingClientRect();
+      const overlayRect = overlay.getBoundingClientRect();
 
-      const scaleX = video.videoWidth / video.clientWidth;
-      const scaleY = video.videoHeight / video.clientHeight;
+      const scaleX = canvas.width / videoRect.width;
+      const scaleY = canvas.height / videoRect.height;
 
-      const cropX = overlay.offsetLeft * scaleX;
-      const cropY = overlay.offsetTop * scaleY;
-      const cropWidth = overlay.clientWidth * scaleX;
-      const cropHeight = overlay.clientHeight * scaleY;
+      const cropX = (overlayRect.left - videoRect.left) * scaleX;
+      const cropY = (overlayRect.top - videoRect.top) * scaleY;
+      const cropW = overlayRect.width * scaleX;
+      const cropH = overlayRect.height * scaleY;
 
       const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = cropWidth;
-      tempCanvas.height = cropHeight;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+      tempCanvas.width = cropW;
+      tempCanvas.height = cropH;
+      tempCanvas.getContext('2d').putImageData(ctx.getImageData(cropX, cropY, cropW, cropH), 0, 0);
 
       const preCanvas = preprocessImage(tempCanvas);
 
       const { data: { text } } = await Tesseract.recognize(preCanvas, 'eng', {
         tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-        tessedit_pageseg_mode: 7
+        tessedit_pageseg_mode: 8
       });
 
-      const cleaned = text.trim();
+      const cleaned = text.trim().replace(/\s+/g, ' ');
       ocrTextDiv.innerText = cleaned;
 
-      const targetLines = targetTextArea.value.split('\n').map(l => l.trim()).filter(l => l !== '');
-      let isMatch = false;
-      let closestMatch = null;
-      let minDistance = Infinity;
-
-      for (const line of targetLines) {
-        if (cleaned === line) {
-          isMatch = true;
-          break;
-        } else {
-          const dist = levenshtein(cleaned, line);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestMatch = line;
-          }
-        }
-      }
-
+      // So khớp
+      const targetLines = targetTextArea.value.split('\n').map(l => l.trim()).filter(l => l);
+      const isMatch = targetLines.includes(cleaned);
       resultDiv.innerHTML = isMatch ? '✅ ĐÚNG' : '❌ SAI';
       resultDiv.className = isMatch ? 'ok': 'fail';
-
-      if (isMatch) {
-        playBeep();
-        captureImage();
-      } else if (minDistance <= 2) {
-        alert(`OCR gần đúng (sai ≤ 2 ký tự).\nOCR: ${cleaned}\nGần giống: ${closestMatch}`);
-      }
-    }
-
-    document.getElementById('captureBtn').addEventListener('click', captureAndOCR);
+    });
   </script>
 </body>
 </html>
