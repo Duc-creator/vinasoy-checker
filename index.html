@@ -29,7 +29,6 @@
 <body>
   <h1>OCR Date Checker</h1>
 
-  <!-- Các phần giao diện giữ nguyên -->
   <div>
     <label for="shelfLife">Hạn sử dụng (tháng):</label>
     <select id="shelfLife">
@@ -89,7 +88,6 @@
     const ocrTextDiv = document.getElementById('ocrText');
     const targetTextArea = document.getElementById('dateList');
 
-    // Hiển thị thứ
     function updateWeekday() {
       const today = new Date();
       const day = today.getDay();
@@ -98,7 +96,6 @@
     }
     updateWeekday();
 
-    // Cộng tháng
     function addMonthsAdjust(date, months) {
       const year = date.getFullYear();
       const month = date.getMonth();
@@ -109,7 +106,6 @@
       return new Date(newDate.getFullYear(), newDate.getMonth(), Math.min(day, lastDay));
     }
 
-    // Tạo date code
     document.getElementById('generateBtn').addEventListener('click', () => {
       const batchCode = document.getElementById('batchCode').value.trim();
       const weekday = document.getElementById('weekday').value;
@@ -136,12 +132,10 @@
       targetTextArea.value = result;
     });
 
-    // Toggle chọn line
     document.getElementById('singleLineCheck').addEventListener('change', function() {
       document.getElementById('lineSelectWrapper').style.display = this.checked ? 'block' : 'none';
     });
 
-    // Mở camera
     async function openCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -154,39 +148,54 @@
     }
     openCamera();
 
-    // Tiền xử lý ảnh nâng cao
     function preprocessImage(srcCanvas) {
-      const scale = 3; // phóng to 3 lần
+      const scale = 4;
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = srcCanvas.width * scale;
       tempCanvas.height = srcCanvas.height * scale;
       const tctx = tempCanvas.getContext('2d');
-
-      // Vẽ phóng to
+      tctx.imageSmoothingEnabled = false;
       tctx.drawImage(srcCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
 
-      // Lấy ảnh và xử lý pixel
-      const imgData = tctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const data = imgData.data;
+      let imgData = tctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      let data = imgData.data;
       for (let i = 0; i < data.length; i += 4) {
-        // grayscale
         const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-        // tăng tương phản + threshold
-        const bw = gray > 140 ? 255 : 0;
-        data[i] = data[i+1] = data[i+2] = bw;
+        data[i] = data[i+1] = data[i+2] = gray;
       }
       tctx.putImageData(imgData, 0, 0);
+
+      const blockSize = 15;
+      const C = 10;
+      imgData = tctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      data = imgData.data;
+      for (let y = 0; y < tempCanvas.height; y++) {
+        for (let x = 0; x < tempCanvas.width; x++) {
+          let sum = 0, count = 0;
+          for (let ky = -Math.floor(blockSize/2); ky <= Math.floor(blockSize/2); ky++) {
+            for (let kx = -Math.floor(blockSize/2); kx <= Math.floor(blockSize/2); kx++) {
+              const px = Math.min(tempCanvas.width-1, Math.max(0, x+kx));
+              const py = Math.min(tempCanvas.height-1, Math.max(0, y+ky));
+              sum += data[(py * tempCanvas.width + px) * 4];
+              count++;
+            }
+          }
+          const mean = sum / count;
+          const idx = (y * tempCanvas.width + x) * 4;
+          const val = data[idx] > mean - C ? 255 : 0;
+          data[idx] = data[idx+1] = data[idx+2] = val;
+        }
+      }
+      tctx.putImageData(imgData, 0, 0);
+
       return tempCanvas;
     }
 
-    // Chụp & OCR
     document.getElementById('captureBtn').addEventListener('click', async () => {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
       const overlay = document.getElementById('overlay');
       const videoRect = video.getBoundingClientRect();
       const overlayRect = overlay.getBoundingClientRect();
-
       const scaleX = canvas.width / videoRect.width;
       const scaleY = canvas.height / videoRect.height;
 
@@ -201,7 +210,6 @@
       tempCanvas.getContext('2d').putImageData(ctx.getImageData(cropX, cropY, cropW, cropH), 0, 0);
 
       const preCanvas = preprocessImage(tempCanvas);
-
       const { data: { text } } = await Tesseract.recognize(preCanvas, 'eng', {
         tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',
         tessedit_pageseg_mode: 8
@@ -209,8 +217,6 @@
 
       const cleaned = text.trim().replace(/\s+/g, ' ');
       ocrTextDiv.innerText = cleaned;
-
-      // So khớp
       const targetLines = targetTextArea.value.split('\n').map(l => l.trim()).filter(l => l);
       const isMatch = targetLines.includes(cleaned);
       resultDiv.innerHTML = isMatch ? '✅ ĐÚNG' : '❌ SAI';
