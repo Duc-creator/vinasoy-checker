@@ -14,6 +14,7 @@
     input, select, button, textarea{ font-size:14px; padding:10px; border-radius:10px; border:1px solid #dfe3ea; background:#fff; }
     button{ cursor:pointer; border:none; background:#0a7cff; color:#fff; box-shadow:0 4px 12px rgba(10,124,255,.2); }
     button:active{ transform:translateY(1px); }
+    button:disabled{ background:#a0aec0; cursor:not-allowed; box-shadow:none; }
     textarea{ width:100%; min-height:120px; }
     .camera{ position:relative; display:inline-block; }
     video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; border:2px solid #e3e7ee; background:#000; }
@@ -58,9 +59,9 @@
 
   <div class="mini">
     <button id="openBtn">Bật camera</button>
-    <button id="captureBtn">📷 Chụp & OCR</button>
-    <button id="toggleAuto">Auto Scan: OFF</button>
-    <span id="loader" class="muted">Model: loading...</span>
+    <button id="captureBtn" disabled>📷 Chụp & OCR</button>
+    <button id="toggleAuto" disabled>Auto Scan: OFF</button>
+    <span id="loader" class="muted">Đang tải model...</span>
   </div>
 
   <div class="camera">
@@ -74,7 +75,6 @@
   </div>
   <div id="ocrText" class="tip"></div>
 
-  <!-- Hidden canvases -->
   <canvas id="rawCanvas"></canvas>
   <canvas id="cropCanvas"></canvas>
   <canvas id="procCanvas"></canvas>
@@ -84,228 +84,190 @@
     <div class="box"><h3>Processed</h3><canvas id="procPreview" width="220" height="100"></canvas></div>
   </div>
 
-  <p class="tip">Mẹo: Đặt khung đỏ vừa khít dãy mã (ví dụ: <b>130226 093C4</b>), giữ máy chắc tay, đảm bảo đủ sáng. 
-  Pipeline: Gray → Resize ×3 → GaussianBlur → AdaptiveThreshold (Gaussian) → Morphology (open) → Unsharp → OCR.</p>
+  <p class="tip">Mẹo: Đặt khung đỏ vừa khít dãy mã (ví dụ: <b>130226 093C4</b>), giữ máy chắc tay, đảm bảo đủ sáng.</p>
 </div>
 
-<!-- OpenCV.js (WASM) -->
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
-<!-- Tesseract.js (WASM) -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
-  // ====== UI helpers ======
-  const $ = (s) => document.querySelector(s);
-  const video = $('#video');
-  const overlay = $('#overlay');
-  const resultDiv = $('#result');
-  const ocrTextDiv = $('#ocrText');
-  const rawCanvas = $('#rawCanvas');
-  const cropCanvas = $('#cropCanvas');
-  const procCanvas = $('#procCanvas');
-  const cropPrev = $('#cropPreview');
-  const procPrev = $('#procPreview');
-  const loader = $('#loader');
-  let autoScan = false, autoTimer = null;
+const $ = s => document.querySelector(s);
+let cvReady = false, tessReady = false;
+const video = $('#video');
+const overlay = $('#overlay');
+const resultDiv = $('#result');
+const ocrTextDiv = $('#ocrText');
+const rawCanvas = $('#rawCanvas');
+const cropCanvas = $('#cropCanvas');
+const procCanvas = $('#procCanvas');
+const cropPrev = $('#cropPreview');
+const procPrev = $('#procPreview');
+const loader = $('#loader');
 
-  // Make overlay draggable on mobile
-  (function makeOverlayDraggable(){
-    let dragging = false, startX=0, startY=0, startLeft=0, startTop=0;
-    const down = (e)=>{ dragging=true; const t=e.touches?e.touches[0]:e; startX=t.clientX; startY=t.clientY; const r=overlay.getBoundingClientRect(); startLeft=r.left; startTop=r.top; e.preventDefault(); };
-    const move = (e)=>{ if(!dragging) return; const t=e.touches?e.touches[0]:e; const dx=t.clientX-startX, dy=t.clientY-startY; overlay.style.left = `calc(50% + ${dx}px)`; overlay.style.top = `calc(50% + ${dy}px)`; };
-    const up = ()=> dragging=false;
-    overlay.addEventListener('mousedown', down); overlay.addEventListener('touchstart', down, {passive:false});
-    window.addEventListener('mousemove', move, {passive:false}); window.addEventListener('touchmove', move, {passive:false});
-    window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
-  })();
-
-  // Weekday
-  function updateWeekday(){ const d=new Date(); const day=d.getDay(); const weekday=(day===0)?1:day+1; $('#weekday').value=weekday; }
-  updateWeekday();
-
-  // Add months adjust
-  function addMonthsAdjust(date, months){ const y=date.getFullYear(); const m=date.getMonth(); const day=date.getDate(); const nm=m+months; const nd=new Date(y, nm, 1); const last=new Date(nd.getFullYear(), nd.getMonth()+1, 0).getDate(); return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last)); }
-
-  $('#generateBtn').addEventListener('click', ()=>{
-    const batchCode = $('#batchCode').value.trim();
-    const weekday = $('#weekday').value;
-    const shelfMonths = parseInt($('#shelfLife').value);
-    const singleLine = $('#singleLineCheck').checked;
-    const line = $('#lineSelect').value;
-    if(batchCode.length!==3){ alert('Nhập mã lô 3 ký tự'); return; }
-    const expiry = addMonthsAdjust(new Date(), shelfMonths);
-    const dd=String(expiry.getDate()).padStart(2,'0');
-    const mm=String(expiry.getMonth()+1).padStart(2,'0');
-    const yy=String(expiry.getFullYear()).slice(2);
-    const dateCode = dd+mm+yy;
-    let res='';
-    if(singleLine){ res = `${dateCode} ${batchCode}${line}${weekday}`; }
-    else{ ['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batchCode}${L}${weekday}\n`); res=res.trim(); }
-    $('#dateList').value = res;
-  });
-  $('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
-
-  // ====== Camera ======
-  async function openCamera(){
-    try{
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1280 }, height: { ideal: 720 },
-          advanced: [ { focusMode: 'continuous' } ]
-        },
-        audio:false
-      });
-      video.srcObject = stream; await video.play();
-      // Set canvas to real video size
-      rawCanvas.width = video.videoWidth; rawCanvas.height = video.videoHeight;
-      cropCanvas.width = 320; cropCanvas.height = 120;
-      procCanvas.width = 640; procCanvas.height = 240; // after processing (scaled)
-    }catch(err){ alert('Không mở được camera: '+err.message); }
+function updateStatus(){
+  if(cvReady && tessReady){
+    loader.textContent = '✅ Cả OpenCV & Tesseract đã sẵn sàng';
+    $('#captureBtn').disabled = false;
+    $('#toggleAuto').disabled = false;
+  } else {
+    $('#captureBtn').disabled = true;
+    $('#toggleAuto').disabled = true;
+    if(!cvReady && !tessReady) loader.textContent = '⏳ Đang tải OpenCV & Tesseract...';
+    else if(!cvReady) loader.textContent = '⏳ Đang tải OpenCV...';
+    else if(!tessReady) loader.textContent = '⏳ Đang tải Tesseract...';
   }
-  $('#openBtn').addEventListener('click', openCamera);
+}
 
-  // ====== OpenCV Pipeline ======
-  let cvReady = false; function onOpenCvReady(){ cv['onRuntimeInitialized']=()=>{ cvReady=true; loader.textContent='Model: ready'; }; }
+function onOpenCvReady(){
+  cv['onRuntimeInitialized'] = ()=>{ cvReady = true; updateStatus(); };
+}
 
-  function getRoi(){
-    const vRect = video.getBoundingClientRect();
-    const oRect = overlay.getBoundingClientRect();
-    const scaleX = video.videoWidth / vRect.width;
-    const scaleY = video.videoHeight / vRect.height;
-    const x = Math.max(0, (oRect.left - vRect.left) * scaleX);
-    const y = Math.max(0, (oRect.top - vRect.top) * scaleY);
-    const w = Math.min(video.videoWidth - x, oRect.width * scaleX);
-    const h = Math.min(video.videoHeight - y, oRect.height * scaleY);
-    return {x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)};
-  }
+const worker = Tesseract.createWorker();
+(async()=>{
+  await worker.load();
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
+  await worker.setParameters({ 'tessedit_pageseg_mode': '7', 'preserve_interword_spaces': '1' });
+  tessReady = true; updateStatus();
+})();
 
-  function drawPreviews(cropMat, procMat){
-    // crop preview
-    const cCanvas = cropPrev; const cCtx=cCanvas.getContext('2d');
-    const tmp1 = document.createElement('canvas'); tmp1.width=cropMat.cols; tmp1.height=cropMat.rows;
-    cv.imshow(tmp1, cropMat); cCtx.clearRect(0,0,cCanvas.width,cCanvas.height); cCtx.drawImage(tmp1,0,0,cCanvas.width,cCanvas.height);
-    // processed preview
-    const pCanvas = procPrev; const pCtx=pCanvas.getContext('2d');
-    const tmp2 = document.createElement('canvas'); tmp2.width=procMat.cols; tmp2.height=procMat.rows;
-    cv.imshow(tmp2, procMat); pCtx.clearRect(0,0,pCanvas.width,pCanvas.height); pCtx.drawImage(tmp2,0,0,pCanvas.width,pCanvas.height);
-  }
+updateStatus();
 
-  function processFrame(){
-    if(!cvReady || video.readyState<2) return null;
-    // Draw video to raw canvas, then read into cv.Mat
-    const rctx = rawCanvas.getContext('2d');
-    rctx.drawImage(video, 0, 0, rawCanvas.width, rawCanvas.height);
-    let src = cv.imread(rawCanvas);
+function updateWeekday(){
+  const d=new Date();
+  const day=d.getDay();
+  const weekday=(day===0)?1:day+1;
+  $('#weekday').value=weekday;
+}
+updateWeekday();
 
-    const {x,y,w,h} = getRoi();
-    let roi = src.roi(new cv.Rect(x,y,w,h));
+function addMonthsAdjust(date, months){
+  const y=date.getFullYear();
+  const m=date.getMonth();
+  const day=date.getDate();
+  const nm=m+months;
+  const nd=new Date(y, nm, 1);
+  const last=new Date(nd.getFullYear(), nd.getMonth()+1, 0).getDate();
+  return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last));
+}
 
-    // ===== Pipeline: gray -> resize x3 -> blur -> adaptive thresh -> morph open -> unsharp =====
-    let gray = new cv.Mat();
-    cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
+$('#generateBtn').addEventListener('click', ()=>{
+  const batchCode = $('#batchCode').value.trim();
+  const weekday = $('#weekday').value;
+  const shelfMonths = parseInt($('#shelfLife').value);
+  const singleLine = $('#singleLineCheck').checked;
+  const line = $('#lineSelect').value;
+  if(batchCode.length!==3){ alert('Nhập mã lô 3 ký tự'); return; }
+  const expiry = addMonthsAdjust(new Date(), shelfMonths);
+  const dd=String(expiry.getDate()).padStart(2,'0');
+  const mm=String(expiry.getMonth()+1).padStart(2,'0');
+  const yy=String(expiry.getFullYear()).slice(2);
+  const dateCode = dd+mm+yy;
+  let res='';
+  if(singleLine){ res = `${dateCode} ${batchCode}${line}${weekday}`; }
+  else{ ['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batchCode}${L}${weekday}\n`); res=res.trim(); }
+  $('#dateList').value = res;
+});
+$('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
 
-    let up = new cv.Mat();
-    const fx=3, fy=3; cv.resize(gray, up, new cv.Size(0,0), fx, fy, cv.INTER_CUBIC);
+async function openCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }}, audio:false });
+    video.srcObject = stream; await video.play();
+    rawCanvas.width = video.videoWidth; rawCanvas.height = video.videoHeight;
+    cropCanvas.width = 320; cropCanvas.height = 120;
+    procCanvas.width = 640; procCanvas.height = 240;
+  }catch(err){ alert('Không mở được camera: '+err.message); }
+}
+$('#openBtn').addEventListener('click', openCamera);
 
-    let blur = new cv.Mat();
-    cv.GaussianBlur(up, blur, new cv.Size(3,3), 0);
+function getRoi(){
+  const vRect = video.getBoundingClientRect();
+  const oRect = overlay.getBoundingClientRect();
+  const scaleX = video.videoWidth / vRect.width;
+  const scaleY = video.videoHeight / vRect.height;
+  const x = Math.max(0, (oRect.left - vRect.left) * scaleX);
+  const y = Math.max(0, (oRect.top - vRect.top) * scaleY);
+  const w = Math.min(video.videoWidth - x, oRect.width * scaleX);
+  const h = Math.min(video.videoHeight - y, oRect.height * scaleY);
+  return {x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)};
+}
 
-    let bin = new cv.Mat();
-    cv.adaptiveThreshold(blur, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
+function drawPreviews(cropMat, procMat){
+  const cCanvas = cropPrev; const cCtx=cCanvas.getContext('2d');
+  const tmp1 = document.createElement('canvas'); tmp1.width=cropMat.cols; tmp1.height=cropMat.rows;
+  cv.imshow(tmp1, cropMat); cCtx.clearRect(0,0,cCanvas.width,cCanvas.height); cCtx.drawImage(tmp1,0,0,cCanvas.width,cCanvas.height);
+  const pCanvas = procPrev; const pCtx=pCanvas.getContext('2d');
+  const tmp2 = document.createElement('canvas'); tmp2.width=procMat.cols; tmp2.height=procMat.rows;
+  cv.imshow(tmp2, procMat); pCtx.clearRect(0,0,pCanvas.width,pCanvas.height); pCtx.drawImage(tmp2,0,0,pCanvas.width,pCanvas.height);
+}
 
-    // Morph open to remove dots
-    let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
-    let opened = new cv.Mat();
-    cv.morphologyEx(bin, opened, cv.MORPH_OPEN, kernel);
+function processFrame(){
+  if(!cvReady || video.readyState<2) return null;
+  const rctx = rawCanvas.getContext('2d');
+  rctx.drawImage(video, 0, 0, rawCanvas.width, rawCanvas.height);
+  let src = cv.imread(rawCanvas);
+  const {x,y,w,h} = getRoi();
+  let roi = src.roi(new cv.Rect(x,y,w,h));
+  let gray = new cv.Mat();
+  cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
+  let up = new cv.Mat();
+  cv.resize(gray, up, new cv.Size(0,0), 3, 3, cv.INTER_CUBIC);
+  let blur = new cv.Mat();
+  cv.GaussianBlur(up, blur, new cv.Size(3,3), 0);
+  let bin = new cv.Mat();
+  cv.adaptiveThreshold(blur, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
+  let opened = new cv.Mat();
+  cv.morphologyEx(bin, opened, cv.MORPH_OPEN, kernel);
+  let sharp = new cv.Mat();
+  let openedBlur = new cv.Mat();
+  cv.GaussianBlur(opened, openedBlur, new cv.Size(0,0), 1.0);
+  cv.addWeighted(opened, 1.5, openedBlur, -0.5, 0, sharp);
+  const mean = cv.mean(sharp)[0];
+  let proc = new cv.Mat();
+  if(mean > 127){ cv.bitwise_not(sharp, proc); } else { proc = sharp.clone(); }
+  drawPreviews(roi, proc);
+  cv.imshow(procCanvas, proc);
+  src.delete(); roi.delete(); gray.delete(); up.delete(); blur.delete(); bin.delete(); opened.delete(); kernel.delete(); openedBlur.delete(); sharp.delete();
+  return procCanvas;
+}
 
-    // Unsharp mask: sharp = 1.5*opened - 0.5*blurred
-    let sharp = new cv.Mat();
-    let openedBlur = new cv.Mat();
-    cv.GaussianBlur(opened, openedBlur, new cv.Size(0,0), 1.0);
-    cv.addWeighted(opened, 1.5, openedBlur, -0.5, 0, sharp);
+function normalizeText(s){
+  let t = s.trim().replace(/\s+/g,' ');
+  t = t.replace(/O/g,'0').replace(/I/g,'1').replace(/l/g,'1').replace(/S/g,'5').replace(/B/g,'8');
+  t = t.replace(/(\d{6})\s([0-9a-zA-Z]{5})/, (m,a,b)=> `${a} ${b.toUpperCase()}`);
+  return t;
+}
 
-    // Invert if text is dark on light
-    // Count mean to decide invert
-    const mean = cv.mean(sharp)[0];
-    let proc = new cv.Mat();
-    if(mean > 127){ cv.bitwise_not(sharp, proc); } else { proc = sharp.clone(); }
+async function runOCR(canvasEl){
+  const { data: { text } } = await worker.recognize(canvasEl, { tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' });
+  const cleaned = normalizeText(text);
+  ocrTextDiv.textContent = cleaned;
+  const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
+  const matched = targets.includes(cleaned);
+  resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+  resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
+}
 
-    drawPreviews(roi, proc);
+async function captureOnce(){
+  const canvasEl = processFrame();
+  if(canvasEl) await runOCR(canvasEl);
+}
+$('#captureBtn').addEventListener('click', captureOnce);
 
-    // To canvas for Tesseract
-    cv.imshow(procCanvas, proc);
-
-    // Cleanup
-    src.delete(); roi.delete(); gray.delete(); up.delete(); blur.delete(); bin.delete(); opened.delete(); kernel.delete(); openedBlur.delete(); sharp.delete();
-
-    return procCanvas; // HTMLCanvasElement
-  }
-
-  // ====== Tesseract Worker (preload for speed) ======
-  const worker = Tesseract.createWorker({ logger: m => {/* console.log(m) */} });
-  let tessReady = false;
-  (async()=>{
-    await worker.load();
-    await worker.loadLanguage('eng');
-    await worker.initialize('eng');
-    // PSM 7: treat as single text line
-    await worker.setParameters({ 'tessedit_pageseg_mode': '7', 'preserve_interword_spaces': '1' });
-    tessReady = true; loader.textContent = 'Model: ready';
-  })();
-
-  function normalizeText(s){
-    let t = s.trim().replace(/\s+/g,' ');
-    // Fix common confusions
-    t = t.replace(/O/g,'0').replace(/I/g,'1').replace(/l/g,'1').replace(/S/g,'5').replace(/B/g,'8');
-    // Uppercase right part
-    t = t.replace(/(\d{6})\s([0-9a-zA-Z]{5})/, (m,a,b)=> `${a} ${b.toUpperCase()}`);
-    return t;
-  }
-
-  async function runOCR(canvasEl){
-    if(!tessReady){ alert('Tesseract chưa sẵn sàng'); return; }
-    const { data: { text } } = await worker.recognize(canvasEl, { 
-      tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' 
-    });
-    const cleaned = normalizeText(text);
-    ocrTextDiv.textContent = cleaned;
-
-    const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-    const matched = targets.includes(cleaned);
-    resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-    resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
-
-    // Also try strict pattern; show hint if not matched
-    const pat = /^\d{6}\s[0-9A-Z]{5}$/;
-    if(!matched){
-      if(pat.test(cleaned)){
-        resultDiv.textContent += ' (format hợp lệ, không khớp danh sách)';
-      } else {
-        resultDiv.textContent += ' (không đúng định dạng 6 số + khoảng trắng + 5 ký tự)';
-      }
-    }
-  }
-
-  async function captureOnce(){
-    const canvasEl = processFrame();
-    if(canvasEl) await runOCR(canvasEl);
-  }
-  $('#captureBtn').addEventListener('click', captureOnce);
-
-  // Auto scan loop (every 450ms)
-  $('#toggleAuto').addEventListener('click', async function(){
-    autoScan = !autoScan; this.textContent = 'Auto Scan: ' + (autoScan? 'ON':'OFF');
-    if(autoScan){
-      const loop = async()=>{
-        if(!autoScan) return;
-        const canvasEl = processFrame();
-        if(canvasEl) await runOCR(canvasEl);
-        autoTimer = setTimeout(loop, 450);
-      };
-      loop();
-    } else { if(autoTimer) clearTimeout(autoTimer); }
-  });
-
+let autoScan = false, autoTimer = null;
+$('#toggleAuto').addEventListener('click', async function(){
+  autoScan = !autoScan; this.textContent = 'Auto Scan: ' + (autoScan? 'ON':'OFF');
+  if(autoScan){
+    const loop = async()=>{
+      if(!autoScan) return;
+      const canvasEl = processFrame();
+      if(canvasEl) await runOCR(canvasEl);
+      autoTimer = setTimeout(loop, 450);
+    };
+    loop();
+  } else { if(autoTimer) clearTimeout(autoTimer); }
+});
 </script>
 </body>
 </html>
