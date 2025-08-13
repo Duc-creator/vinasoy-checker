@@ -1,232 +1,311 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OCR Date Checker</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>OCR Date Checker (OpenCV.js + Tesseract)</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 10px; background: #f8f8f8; }
-    h1 { color: #333; }
-    textarea, input, select, button {
-      padding: 10px; margin: 10px 0; font-size: 1em; width: 90%; max-width: 400px;
-    }
-    button { background: #007bff; color: white; border: none; border-radius: 8px; cursor: pointer; }
-    button:active { background: #0056b3; }
-    #result { font-size: 1.5em; margin-top: 10px; font-weight: bold; }
-    .ok { color: green; }
-    .fail { color: red; }
-    #ocrText { white-space: pre-line; font-size: 1em; color: #333; margin-top: 10px; background: #fff;
-      padding: 10px; border-radius: 8px; max-width: 400px; margin: auto; }
-    .camera-wrapper { position: relative; display: inline-block; }
-    video { border: 2px solid #ccc; border-radius: 8px; margin: 10px 0; width: 320px; height: 240px; object-fit: cover; }
-    #overlay {
-      position: absolute; border: 2px solid rgba(255, 0, 0, 0.7); pointer-events: none;
-      top: 50%; left: 50%; width: 150px; height: 50px; transform: translate(-50%, -50%);
-      box-shadow: 0 0 10px rgba(255,0,0,0.5);
-    }
+    :root{ --w: 340px; --h: 240px; }
+    body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; margin:0; }
+    .wrap{ max-width:720px; margin:0 auto; padding:14px; }
+    h1{ font-size:20px; margin:10px 0; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    label{ font-size:14px; color:#333; }
+    input, select, button, textarea{ font-size:14px; padding:10px; border-radius:10px; border:1px solid #dfe3ea; background:#fff; }
+    button{ cursor:pointer; border:none; background:#0a7cff; color:#fff; box-shadow:0 4px 12px rgba(10,124,255,.2); }
+    button:active{ transform:translateY(1px); }
+    textarea{ width:100%; min-height:120px; }
+    .camera{ position:relative; display:inline-block; }
+    video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; border:2px solid #e3e7ee; background:#000; }
+    #overlay{ position:absolute; border:2px dashed rgba(255,62,62,.9); border-radius:8px; pointer-events:none; width:160px; height:56px; top:50%; left:50%; transform:translate(-50%,-50%); box-shadow:0 0 12px rgba(255,62,62,.35); }
+    .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+    .status{ font-weight:700; font-size:16px; }
+    .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
+    canvas{ display:none; }
+    .preview{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; margin-top:8px; }
+    .box{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:8px; }
+    .box h3{ margin:0 0 6px 0; font-size:13px; color:#374151; }
+    .box canvas{ display:block; width:220px; height:auto; border-radius:8px; }
+    .tip{ font-size:12px; color:#6b7280; }
   </style>
 </head>
 <body>
-  <h1>OCR Date Checker</h1>
+<div class="wrap">
+  <h1>OCR Date Checker (OpenCV.js + Tesseract)</h1>
 
-  <!-- Các phần giao diện giữ nguyên -->
-  <div>
-    <label for="shelfLife">Hạn sử dụng (tháng):</label>
-    <select id="shelfLife">
-      <option value="6">6 tháng</option>
-      <option value="9">9 tháng</option>
-      <option value="10">10 tháng</option>
-    </select>
-  </div>
-  <div>
-    <label for="batchCode">Mã lô (3 ký tự):</label>
-    <input type="text" id="batchCode" maxlength="3" placeholder="VD: 086">
-  </div>
-  <div>
-    <label for="weekday">Thứ hôm nay:</label>
-    <input type="text" id="weekday" readonly>
-  </div>
-  <div>
-    <label>
-      <input type="checkbox" id="singleLineCheck"> Chỉ tạo cho 1 line
+  <div class="row">
+    <label>Hạn dùng (tháng)
+      <select id="shelfLife">
+        <option value="6">6</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
     </label>
-  </div>
-  <div id="lineSelectWrapper" style="display:none;">
-    <label for="lineSelect">Chọn line:</label>
-    <select id="lineSelect">
-      <option value="A">A</option>
-      <option value="B">B</option>
-      <option value="C">C</option>
-      <option value="D">D</option>
-      <option value="E">E</option>
-      <option value="F">F</option>
-      <option value="G">G</option>
-      <option value="H">H</option>
-      <option value="I">I</option>
-    </select>
+    <label>Mã lô (3 ký tự)
+      <input id="batchCode" maxlength="3" placeholder="VD: 086" />
+    </label>
+    <label>Thứ hôm nay
+      <input id="weekday" readonly style="width:60px" />
+    </label>
+    <label class="mini"><input type="checkbox" id="singleLineCheck" /> Chỉ 1 line</label>
+    <label id="lineSelectWrapper" style="display:none;">Line
+      <select id="lineSelect"><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>H</option><option>I</option></select>
+    </label>
+    <button id="generateBtn">Tạo danh sách date</button>
   </div>
 
-  <button id="generateBtn">Tạo danh sách date</button>
-  <textarea id="dateList" rows="10" placeholder="Danh sách date code..."></textarea>
+  <textarea id="dateList" placeholder="Danh sách date code..."></textarea>
 
-  <button id="captureBtn">📷 Chụp & OCR</button>
-
-  <div class="camera-wrapper">
-    <video id="video" autoplay playsinline></video>
-    <div id="overlay"></div>
+  <div class="mini">
+    <button id="openBtn">Bật camera</button>
+    <button id="captureBtn">📷 Chụp & OCR</button>
+    <button id="toggleAuto">Auto Scan: OFF</button>
+    <span id="loader" class="muted">Model: loading...</span>
   </div>
-  <canvas id="canvas" width="320" height="240" style="display:none"></canvas>
 
-  <div id="result"></div>
-  <div id="ocrText"></div>
+  <div class="camera">
+    <video id="video" playsinline muted></video>
+    <div id="overlay" title="Kéo khung này đến vùng có mã (giữ giữa khung)"></div>
+  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const resultDiv = document.getElementById('result');
-    const ocrTextDiv = document.getElementById('ocrText');
-    const targetTextArea = document.getElementById('dateList');
+  <div class="mini">
+    <span>Kết quả:</span>
+    <span id="result" class="status muted">—</span>
+  </div>
+  <div id="ocrText" class="tip"></div>
 
-    function updateWeekday() {
-      const today = new Date();
-      const day = today.getDay();
-      const weekday = (day === 0) ? 1 : day + 1;
-      document.getElementById('weekday').value = weekday;
-    }
-    updateWeekday();
+  <!-- Hidden canvases -->
+  <canvas id="rawCanvas"></canvas>
+  <canvas id="cropCanvas"></canvas>
+  <canvas id="procCanvas"></canvas>
 
-    function addMonthsAdjust(date, months) {
-      const year = date.getFullYear();
-      const month = date.getMonth();
-      const day = date.getDate();
-      const newMonth = month + months;
-      const newDate = new Date(year, newMonth, 1);
-      const lastDay = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate();
-      return new Date(newDate.getFullYear(), newDate.getMonth(), Math.min(day, lastDay));
-    }
+  <div class="preview">
+    <div class="box"><h3>Crop</h3><canvas id="cropPreview" width="220" height="100"></canvas></div>
+    <div class="box"><h3>Processed</h3><canvas id="procPreview" width="220" height="100"></canvas></div>
+  </div>
 
-    document.getElementById('generateBtn').addEventListener('click', () => {
-      const batchCode = document.getElementById('batchCode').value.trim();
-      const weekday = document.getElementById('weekday').value;
-      const shelfMonths = parseInt(document.getElementById('shelfLife').value);
-      const singleLine = document.getElementById('singleLineCheck').checked;
-      const lineSelect = document.getElementById('lineSelect').value;
-      if (batchCode.length !== 3) { alert('Nhập mã lô 3 ký tự'); return; }
+  <p class="tip">Mẹo: Đặt khung đỏ vừa khít dãy mã (ví dụ: <b>130226 093C4</b>), giữ máy chắc tay, đảm bảo đủ sáng. 
+  Pipeline: Gray → Resize ×3 → GaussianBlur → AdaptiveThreshold (Gaussian) → Morphology (open) → Unsharp → OCR.</p>
+</div>
 
-      const expiry = addMonthsAdjust(new Date(), shelfMonths);
-      const dd = String(expiry.getDate()).padStart(2, '0');
-      const mm = String(expiry.getMonth() + 1).padStart(2, '0');
-      const yy = String(expiry.getFullYear()).slice(2);
-      const dateCode = dd + mm + yy;
+<!-- OpenCV.js (WASM) -->
+<script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
+<!-- Tesseract.js (WASM) -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+  // ====== UI helpers ======
+  const $ = (s) => document.querySelector(s);
+  const video = $('#video');
+  const overlay = $('#overlay');
+  const resultDiv = $('#result');
+  const ocrTextDiv = $('#ocrText');
+  const rawCanvas = $('#rawCanvas');
+  const cropCanvas = $('#cropCanvas');
+  const procCanvas = $('#procCanvas');
+  const cropPrev = $('#cropPreview');
+  const procPrev = $('#procPreview');
+  const loader = $('#loader');
+  let autoScan = false, autoTimer = null;
 
-      let result = '';
-      if (singleLine) {
-        result = `${dateCode} ${batchCode}${lineSelect}${weekday}`;
-      } else {
-        ['A','B','C','D','E','F','G','H','I'].forEach(line => {
-          result += `${dateCode} ${batchCode}${line}${weekday}\n`;
-        });
-        result = result.trim();
-      }
-      targetTextArea.value = result;
-    });
+  // Make overlay draggable on mobile
+  (function makeOverlayDraggable(){
+    let dragging = false, startX=0, startY=0, startLeft=0, startTop=0;
+    const down = (e)=>{ dragging=true; const t=e.touches?e.touches[0]:e; startX=t.clientX; startY=t.clientY; const r=overlay.getBoundingClientRect(); startLeft=r.left; startTop=r.top; e.preventDefault(); };
+    const move = (e)=>{ if(!dragging) return; const t=e.touches?e.touches[0]:e; const dx=t.clientX-startX, dy=t.clientY-startY; overlay.style.left = `calc(50% + ${dx}px)`; overlay.style.top = `calc(50% + ${dy}px)`; };
+    const up = ()=> dragging=false;
+    overlay.addEventListener('mousedown', down); overlay.addEventListener('touchstart', down, {passive:false});
+    window.addEventListener('mousemove', move, {passive:false}); window.addEventListener('touchmove', move, {passive:false});
+    window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+  })();
 
-    document.getElementById('singleLineCheck').addEventListener('change', function() {
-      document.getElementById('lineSelectWrapper').style.display = this.checked ? 'block' : 'none';
-    });
+  // Weekday
+  function updateWeekday(){ const d=new Date(); const day=d.getDay(); const weekday=(day===0)?1:day+1; $('#weekday').value=weekday; }
+  updateWeekday();
 
-    async function openCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-        });
-        video.srcObject = stream;
-      } catch (e) {
-        alert('Không mở được camera: ' + e);
-      }
-    }
-    openCamera();
+  // Add months adjust
+  function addMonthsAdjust(date, months){ const y=date.getFullYear(); const m=date.getMonth(); const day=date.getDate(); const nm=m+months; const nd=new Date(y, nm, 1); const last=new Date(nd.getFullYear(), nd.getMonth()+1, 0).getDate(); return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last)); }
 
-    // Adaptive Threshold đơn giản
-    function preprocessImage(srcCanvas) {
-      const scale = 3;
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = srcCanvas.width * scale;
-      tempCanvas.height = srcCanvas.height * scale;
-      const tctx = tempCanvas.getContext('2d');
-      tctx.drawImage(srcCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+  $('#generateBtn').addEventListener('click', ()=>{
+    const batchCode = $('#batchCode').value.trim();
+    const weekday = $('#weekday').value;
+    const shelfMonths = parseInt($('#shelfLife').value);
+    const singleLine = $('#singleLineCheck').checked;
+    const line = $('#lineSelect').value;
+    if(batchCode.length!==3){ alert('Nhập mã lô 3 ký tự'); return; }
+    const expiry = addMonthsAdjust(new Date(), shelfMonths);
+    const dd=String(expiry.getDate()).padStart(2,'0');
+    const mm=String(expiry.getMonth()+1).padStart(2,'0');
+    const yy=String(expiry.getFullYear()).slice(2);
+    const dateCode = dd+mm+yy;
+    let res='';
+    if(singleLine){ res = `${dateCode} ${batchCode}${line}${weekday}`; }
+    else{ ['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batchCode}${L}${weekday}\n`); res=res.trim(); }
+    $('#dateList').value = res;
+  });
+  $('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
 
-      const imgData = tctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const data = imgData.data;
-      const windowSize = 15; // kích thước cửa sổ tính trung bình
-      const grayArr = [];
-
-      for (let i = 0; i < data.length; i += 4) {
-        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        grayArr.push(gray);
-      }
-
-      const getGray = (x, y) => grayArr[y * tempCanvas.width + x];
-
-      for (let y = 0; y < tempCanvas.height; y++) {
-        for (let x = 0; x < tempCanvas.width; x++) {
-          let sum = 0, count = 0;
-          for (let wy = -windowSize; wy <= windowSize; wy++) {
-            for (let wx = -windowSize; wx <= windowSize; wx++) {
-              const nx = x + wx, ny = y + wy;
-              if (nx >= 0 && nx < tempCanvas.width && ny >= 0 && ny < tempCanvas.height) {
-                sum += getGray(nx, ny);
-                count++;
-              }
-            }
-          }
-          const avg = sum / count;
-          const i = (y * tempCanvas.width + x) * 4;
-          const val = (getGray(x, y) > avg - 15) ? 255 : 0;
-          data[i] = data[i + 1] = data[i + 2] = val;
-        }
-      }
-      tctx.putImageData(imgData, 0, 0);
-      return tempCanvas;
-    }
-
-    document.getElementById('captureBtn').addEventListener('click', async () => {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const overlay = document.getElementById('overlay');
-      const videoRect = video.getBoundingClientRect();
-      const overlayRect = overlay.getBoundingClientRect();
-      const scaleX = video.videoWidth / videoRect.width;
-      const scaleY = video.videoHeight / videoRect.height;
-
-      const cropX = (overlayRect.left - videoRect.left) * scaleX;
-      const cropY = (overlayRect.top - videoRect.top) * scaleY;
-      const cropW = overlayRect.width * scaleX;
-      const cropH = overlayRect.height * scaleY;
-
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = cropW;
-      tempCanvas.height = cropH;
-      const tctx = tempCanvas.getContext('2d');
-      tctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-      const preCanvas = preprocessImage(tempCanvas);
-
-      const { data: { text } } = await Tesseract.recognize(preCanvas, 'eng', {
-        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-        tessedit_pageseg_mode: 7
+  // ====== Camera ======
+  async function openCamera(){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 }, height: { ideal: 720 },
+          advanced: [ { focusMode: 'continuous' } ]
+        },
+        audio:false
       });
+      video.srcObject = stream; await video.play();
+      // Set canvas to real video size
+      rawCanvas.width = video.videoWidth; rawCanvas.height = video.videoHeight;
+      cropCanvas.width = 320; cropCanvas.height = 120;
+      procCanvas.width = 640; procCanvas.height = 240; // after processing (scaled)
+    }catch(err){ alert('Không mở được camera: '+err.message); }
+  }
+  $('#openBtn').addEventListener('click', openCamera);
 
-      const cleaned = text.trim().replace(/\s+/g, ' ');
-      ocrTextDiv.innerText = cleaned;
+  // ====== OpenCV Pipeline ======
+  let cvReady = false; function onOpenCvReady(){ cv['onRuntimeInitialized']=()=>{ cvReady=true; loader.textContent='Model: ready'; }; }
 
-      const targetLines = targetTextArea.value.split('\n').map(l => l.trim()).filter(l => l);
-      const isMatch = targetLines.includes(cleaned);
-      resultDiv.innerHTML = isMatch ? '✅ ĐÚNG' : '❌ SAI';
-      resultDiv.className = isMatch ? 'ok': 'fail';
+  function getRoi(){
+    const vRect = video.getBoundingClientRect();
+    const oRect = overlay.getBoundingClientRect();
+    const scaleX = video.videoWidth / vRect.width;
+    const scaleY = video.videoHeight / vRect.height;
+    const x = Math.max(0, (oRect.left - vRect.left) * scaleX);
+    const y = Math.max(0, (oRect.top - vRect.top) * scaleY);
+    const w = Math.min(video.videoWidth - x, oRect.width * scaleX);
+    const h = Math.min(video.videoHeight - y, oRect.height * scaleY);
+    return {x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)};
+  }
+
+  function drawPreviews(cropMat, procMat){
+    // crop preview
+    const cCanvas = cropPrev; const cCtx=cCanvas.getContext('2d');
+    const tmp1 = document.createElement('canvas'); tmp1.width=cropMat.cols; tmp1.height=cropMat.rows;
+    cv.imshow(tmp1, cropMat); cCtx.clearRect(0,0,cCanvas.width,cCanvas.height); cCtx.drawImage(tmp1,0,0,cCanvas.width,cCanvas.height);
+    // processed preview
+    const pCanvas = procPrev; const pCtx=pCanvas.getContext('2d');
+    const tmp2 = document.createElement('canvas'); tmp2.width=procMat.cols; tmp2.height=procMat.rows;
+    cv.imshow(tmp2, procMat); pCtx.clearRect(0,0,pCanvas.width,pCanvas.height); pCtx.drawImage(tmp2,0,0,pCanvas.width,pCanvas.height);
+  }
+
+  function processFrame(){
+    if(!cvReady || video.readyState<2) return null;
+    // Draw video to raw canvas, then read into cv.Mat
+    const rctx = rawCanvas.getContext('2d');
+    rctx.drawImage(video, 0, 0, rawCanvas.width, rawCanvas.height);
+    let src = cv.imread(rawCanvas);
+
+    const {x,y,w,h} = getRoi();
+    let roi = src.roi(new cv.Rect(x,y,w,h));
+
+    // ===== Pipeline: gray -> resize x3 -> blur -> adaptive thresh -> morph open -> unsharp =====
+    let gray = new cv.Mat();
+    cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
+
+    let up = new cv.Mat();
+    const fx=3, fy=3; cv.resize(gray, up, new cv.Size(0,0), fx, fy, cv.INTER_CUBIC);
+
+    let blur = new cv.Mat();
+    cv.GaussianBlur(up, blur, new cv.Size(3,3), 0);
+
+    let bin = new cv.Mat();
+    cv.adaptiveThreshold(blur, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
+
+    // Morph open to remove dots
+    let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
+    let opened = new cv.Mat();
+    cv.morphologyEx(bin, opened, cv.MORPH_OPEN, kernel);
+
+    // Unsharp mask: sharp = 1.5*opened - 0.5*blurred
+    let sharp = new cv.Mat();
+    let openedBlur = new cv.Mat();
+    cv.GaussianBlur(opened, openedBlur, new cv.Size(0,0), 1.0);
+    cv.addWeighted(opened, 1.5, openedBlur, -0.5, 0, sharp);
+
+    // Invert if text is dark on light
+    // Count mean to decide invert
+    const mean = cv.mean(sharp)[0];
+    let proc = new cv.Mat();
+    if(mean > 127){ cv.bitwise_not(sharp, proc); } else { proc = sharp.clone(); }
+
+    drawPreviews(roi, proc);
+
+    // To canvas for Tesseract
+    cv.imshow(procCanvas, proc);
+
+    // Cleanup
+    src.delete(); roi.delete(); gray.delete(); up.delete(); blur.delete(); bin.delete(); opened.delete(); kernel.delete(); openedBlur.delete(); sharp.delete();
+
+    return procCanvas; // HTMLCanvasElement
+  }
+
+  // ====== Tesseract Worker (preload for speed) ======
+  const worker = Tesseract.createWorker({ logger: m => {/* console.log(m) */} });
+  let tessReady = false;
+  (async()=>{
+    await worker.load();
+    await worker.loadLanguage('eng');
+    await worker.initialize('eng');
+    // PSM 7: treat as single text line
+    await worker.setParameters({ 'tessedit_pageseg_mode': '7', 'preserve_interword_spaces': '1' });
+    tessReady = true; loader.textContent = 'Model: ready';
+  })();
+
+  function normalizeText(s){
+    let t = s.trim().replace(/\s+/g,' ');
+    // Fix common confusions
+    t = t.replace(/O/g,'0').replace(/I/g,'1').replace(/l/g,'1').replace(/S/g,'5').replace(/B/g,'8');
+    // Uppercase right part
+    t = t.replace(/(\d{6})\s([0-9a-zA-Z]{5})/, (m,a,b)=> `${a} ${b.toUpperCase()}`);
+    return t;
+  }
+
+  async function runOCR(canvasEl){
+    if(!tessReady){ alert('Tesseract chưa sẵn sàng'); return; }
+    const { data: { text } } = await worker.recognize(canvasEl, { 
+      tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' 
     });
-  </script>
+    const cleaned = normalizeText(text);
+    ocrTextDiv.textContent = cleaned;
+
+    const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
+    const matched = targets.includes(cleaned);
+    resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+    resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
+
+    // Also try strict pattern; show hint if not matched
+    const pat = /^\d{6}\s[0-9A-Z]{5}$/;
+    if(!matched){
+      if(pat.test(cleaned)){
+        resultDiv.textContent += ' (format hợp lệ, không khớp danh sách)';
+      } else {
+        resultDiv.textContent += ' (không đúng định dạng 6 số + khoảng trắng + 5 ký tự)';
+      }
+    }
+  }
+
+  async function captureOnce(){
+    const canvasEl = processFrame();
+    if(canvasEl) await runOCR(canvasEl);
+  }
+  $('#captureBtn').addEventListener('click', captureOnce);
+
+  // Auto scan loop (every 450ms)
+  $('#toggleAuto').addEventListener('click', async function(){
+    autoScan = !autoScan; this.textContent = 'Auto Scan: ' + (autoScan? 'ON':'OFF');
+    if(autoScan){
+      const loop = async()=>{
+        if(!autoScan) return;
+        const canvasEl = processFrame();
+        if(canvasEl) await runOCR(canvasEl);
+        autoTimer = setTimeout(loop, 450);
+      };
+      loop();
+    } else { if(autoTimer) clearTimeout(autoTimer); }
+  });
+
+</script>
 </body>
 </html>
