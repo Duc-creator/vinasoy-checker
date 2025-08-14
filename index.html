@@ -99,22 +99,44 @@ function drawCross(){
   ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
   ctx.strokeStyle = 'rgba(255,62,62,0.9)';
   ctx.lineWidth = 2;
+
   const centerX = crossOverlay.width / 2;
   const centerY = crossOverlay.height / 2;
-  const vLen = 20; // gạch đứng
-  const hLen = vLen * 6; // gạch ngang
+  const vLen = 20; // chiều dài gạch đứng
+  const hLen = vLen * 7; // chiều dài gạch ngang gấp 7 lần
+
   // Gạch ngang
   ctx.beginPath();
   ctx.moveTo(centerX - hLen/2, centerY);
   ctx.lineTo(centerX + hLen/2, centerY);
   ctx.stroke();
+
   // Gạch đứng
   ctx.beginPath();
   ctx.moveTo(centerX, centerY - vLen/2);
   ctx.lineTo(centerX, centerY + vLen/2);
   ctx.stroke();
 }
+async function openCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }, audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
 
+    // Đảm bảo overlay cùng kích thước video hiển thị
+    crossOverlay.width = video.videoWidth;
+    crossOverlay.height = video.videoHeight;
+
+    rawCanvas.width = video.videoWidth;
+    rawCanvas.height = video.videoHeight;
+
+    drawCross();
+  }catch(err){
+    alert('Không mở được camera: '+err.message);
+  }
+}
 function updateWeekday(){
   const d=new Date();
   const day=d.getDay();
