@@ -31,7 +31,7 @@ canvas{ display:none; }
 </head>
 <body>
 <div class="wrap">
-<h1>OCR Date Checker (OpenCV.js + Tesseract)</h1>
+<h1>OCR Date Checker Vinasoy (NĐT) </h1>
 
 <div class="row">
   <label>Hạn dùng (tháng)
@@ -188,25 +188,43 @@ async function captureOnce(){
 }
 $('#captureBtn').addEventListener('click',captureOnce);
 
-$('#toggleAuto').addEventListener('click',function(){
-  autoScan=!autoScan;this.textContent='Auto Scan: '+(autoScan?'ON':'OFF');
-  if(autoScan){
-    const loop=async()=>{
-      if(!autoScan)return;
-      const procMat=processFrame();
-      if(procMat){
-        const cleaned=await runTesseract(procMat);
-        ocrTextDiv.textContent=cleaned;
-        const targets=$('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-        const matched=targets.includes(cleaned);
-        resultDiv.textContent=matched?'✅ ĐÚNG':'❌ SAI';
-        resultDiv.className='status '+(matched?'ok':'fail');
+$('#toggleAuto').addEventListener('click', function () {
+  autoScan = !autoScan;
+  this.textContent = 'Auto Scan: ' + (autoScan ? 'ON' : 'OFF');
+
+  if (autoScan) {
+    const loop = async () => {
+      if (!autoScan) return;
+
+      const procMat = processFrame();
+      if (procMat) {
+        const cleaned = await runTesseract(procMat);
+        ocrTextDiv.textContent = cleaned;
+
+        const targets = $('#dateList').value
+          .split('\n')
+          .map(v => v.trim())
+          .filter(Boolean);
+
+        const matched = targets.includes(cleaned);
+
+        resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+        resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
+
         procMat.delete();
+
+        if (matched) {
+          autoScan = false;
+          $('#toggleAuto').textContent = 'Auto Scan: OFF';
+          return; // Dừng quét khi khớp
+        }
       }
-      autoTimer=setTimeout(loop,600);
+      autoTimer = setTimeout(loop, 600);
     };
     loop();
-  }else{if(autoTimer)clearTimeout(autoTimer);}
+  } else {
+    if (autoTimer) clearTimeout(autoTimer);
+  }
 });
 </script>
 </body>
