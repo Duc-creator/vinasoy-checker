@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
 <title>OCR Date Checker Vinasoy (NĐT)</title>
 <style>
-/* Giữ nguyên CSS cũ */
 :root{ --w: 340px; --h: 240px; }
 body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; margin:0; }
 .wrap{ max-width:720px; margin:0 auto; padding:14px; }
@@ -18,7 +17,31 @@ button:active{ transform:translateY(1px); }
 textarea{ width:100%; min-height:120px; }
 .camera{ position:relative; display:inline-block; }
 video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; border:2px solid #e3e7ee; background:#000; }
-#overlay{ position:absolute; border:2px dashed rgba(255,62,62,.9); border-radius:8px; pointer-events:none; width:160px; height:56px; top:50%; left:50%; transform:translate(-50%,-50%); box-shadow:0 0 12px rgba(255,62,62,.35); }
+
+/* Overlay dấu cộng */
+#overlay {
+  position:absolute;
+  width:40px; height:40px;
+  top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+}
+#overlay::before, #overlay::after {
+  content:'';
+  position:absolute;
+  background:rgba(255,62,62,.9);
+}
+#overlay::before {
+  left:50%; top:0;
+  width:2px; height:100%;
+  transform:translateX(-50%);
+}
+#overlay::after {
+  top:50%; left:0;
+  width:100%; height:2px;
+  transform:translateY(-50%);
+}
+
 .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
 .status{ font-weight:700; font-size:16px; }
 .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
@@ -80,7 +103,7 @@ canvas{ display:none; }
   <div class="box"><h3>Processed</h3><canvas id="procPreview" width="220" height="100"></canvas></div>
 </div>
 
-<p class="tip">Mẹo: Đặt khung đỏ vừa khít dãy mã...</p>
+<p class="tip">Mẹo: Đặt dấu cộng vào đúng vị trí date code để OCR chuẩn hơn.</p>
 </div>
 
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
@@ -88,22 +111,11 @@ canvas{ display:none; }
 <script>
 const $ = (s) => document.querySelector(s);
 const video = $('#video');
-const overlay = $('#overlay');
 const resultDiv = $('#result');
 const ocrTextDiv = $('#ocrText');
 const rawCanvas = $('#rawCanvas');
 let autoScan = false, autoTimer = null;
 let cvReady = false;
-
-(function makeOverlayDraggable(){
-  let dragging = false, startX=0, startY=0;
-  const down = (e)=>{ dragging=true; const t=e.touches?e.touches[0]:e; startX=t.clientX; startY=t.clientY; e.preventDefault(); };
-  const move = (e)=>{ if(!dragging) return; const t=e.touches?e.touches[0]:e; const dx=t.clientX-startX, dy=t.clientY-startY; overlay.style.left = `calc(50% + ${dx}px)`; overlay.style.top = `calc(50% + ${dy}px)`; };
-  const up = ()=> dragging=false;
-  overlay.addEventListener('mousedown', down); overlay.addEventListener('touchstart', down, {passive:false});
-  window.addEventListener('mousemove', move, {passive:false}); window.addEventListener('touchmove', move, {passive:false});
-  window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
-})();
 
 function updateWeekday(){
   const d=new Date();
@@ -160,14 +172,14 @@ function onOpenCvReady(){
 
 function getRoi(){
   const vRect = video.getBoundingClientRect();
-  const oRect = overlay.getBoundingClientRect();
+  const centerX = vRect.width / 2;
+  const centerY = vRect.height / 2;
+  const roiW = 160, roiH = 56;
   const scaleX = video.videoWidth / vRect.width;
   const scaleY = video.videoHeight / vRect.height;
-  const x = Math.max(0, (oRect.left - vRect.left) * scaleX);
-  const y = Math.max(0, (oRect.top - vRect.top) * scaleY);
-  const w = Math.min(video.videoWidth - x, oRect.width * scaleX);
-  const h = Math.min(video.videoHeight - y, oRect.height * scaleY);
-  return {x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)};
+  const x = (centerX - roiW / 2) * scaleX;
+  const y = (centerY - roiH / 2) * scaleY;
+  return {x:Math.round(x), y:Math.round(y), w:Math.round(roiW * scaleX), h:Math.round(roiH * scaleY)};
 }
 
 function processFrame(){
@@ -256,7 +268,7 @@ $('#toggleAuto').addEventListener('click', async function(){
         const matched = targets.includes(cleaned);
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
         resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
-        if(matched) autoScan = false; // Dừng khi đúng
+        if(matched) autoScan = false;
         procMat.delete();
       }
       if(autoScan) autoTimer = setTimeout(loop, 600);
