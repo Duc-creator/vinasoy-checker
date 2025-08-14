@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-<title>OCR Date Checker (OpenCV.js + Tesseract)</title>
+<title>OCR Date Checker Vinasoy (NĐT)</title>
 <style>
+/* Giữ nguyên CSS cũ */
 :root{ --w: 340px; --h: 240px; }
 body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; margin:0; }
 .wrap{ max-width:720px; margin:0 auto; padding:14px; }
@@ -31,7 +32,7 @@ canvas{ display:none; }
 </head>
 <body>
 <div class="wrap">
-<h1>OCR Date Checker Vinasoy (NĐT) </h1>
+<h1>OCR Date Checker Vinasoy (NĐT)</h1>
 
 <div class="row">
   <label>Hạn dùng (tháng)
@@ -53,8 +54,8 @@ canvas{ display:none; }
 <textarea id="dateList" placeholder="Danh sách date code..."></textarea>
 
 <div class="mini">
-  <button id="openBtn">Bật camera</button>
   <button id="captureBtn">📷 Chụp & OCR</button>
+  <button id="openBtn">Bật camera</button>
   <button id="toggleAuto">Auto Scan: OFF</button>
   <span id="loader" class="muted">Templates: chưa tải</span>
 </div>
@@ -85,146 +86,183 @@ canvas{ display:none; }
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script>
-const $ = s => document.querySelector(s);
-const video = $('#video'), overlay = $('#overlay'), resultDiv = $('#result'), ocrTextDiv = $('#ocrText');
-const rawCanvas = $('#rawCanvas'), cropPrev = $('#cropPreview'), procPrev = $('#procPreview');
-let autoScan = false, autoTimer = null, cvReady = false;
+const $ = (s) => document.querySelector(s);
+const video = $('#video');
+const overlay = $('#overlay');
+const resultDiv = $('#result');
+const ocrTextDiv = $('#ocrText');
+const rawCanvas = $('#rawCanvas');
+let autoScan = false, autoTimer = null;
+let cvReady = false;
 
-(function draggable(){
-  let drag=false,sx=0,sy=0;
-  overlay.addEventListener('mousedown',e=>{drag=true;sx=e.clientX;sy=e.clientY;});
-  window.addEventListener('mousemove',e=>{if(!drag)return;const dx=e.clientX-sx,dy=e.clientY-sy;overlay.style.left=`calc(50% + ${dx}px)`;overlay.style.top=`calc(50% + ${dy}px)`;});
-  window.addEventListener('mouseup',()=>drag=false);
+(function makeOverlayDraggable(){
+  let dragging = false, startX=0, startY=0;
+  const down = (e)=>{ dragging=true; const t=e.touches?e.touches[0]:e; startX=t.clientX; startY=t.clientY; e.preventDefault(); };
+  const move = (e)=>{ if(!dragging) return; const t=e.touches?e.touches[0]:e; const dx=t.clientX-startX, dy=t.clientY-startY; overlay.style.left = `calc(50% + ${dx}px)`; overlay.style.top = `calc(50% + ${dy}px)`; };
+  const up = ()=> dragging=false;
+  overlay.addEventListener('mousedown', down); overlay.addEventListener('touchstart', down, {passive:false});
+  window.addEventListener('mousemove', move, {passive:false}); window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
 })();
-function updateWeekday(){const d=new Date();$('#weekday').value=(d.getDay()===0)?1:d.getDay()+1;}
-updateWeekday();
-function addMonthsAdjust(date,months){const y=date.getFullYear(),m=date.getMonth(),day=date.getDate(),nm=m+months;const nd=new Date(y,nm,1);const last=new Date(nd.getFullYear(),nd.getMonth()+1,0).getDate();return new Date(nd.getFullYear(),nd.getMonth(),Math.min(day,last));}
 
-$('#generateBtn').addEventListener('click',()=>{
-  const batch=$('#batchCode').value.trim(),wd=$('#weekday').value,mon=parseInt($('#shelfLife').value);
-  if(batch.length!==3){alert('Nhập mã lô 3 ký tự');return;}
-  const exp=addMonthsAdjust(new Date(),mon),dd=String(exp.getDate()).padStart(2,'0'),mm=String(exp.getMonth()+1).padStart(2,'0'),yy=String(exp.getFullYear()).slice(2);
-  const dateCode=dd+mm+yy;let res='';
-  if($('#singleLineCheck').checked){res=`${dateCode} ${batch}${$('#lineSelect').value}${wd}`;}
-  else{['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batch}${L}${wd}\n`);res=res.trim();}
-  $('#dateList').value=res;
+function updateWeekday(){
+  const d=new Date();
+  const day=d.getDay();
+  const weekday=(day===0)?1:day+1;
+  $('#weekday').value=weekday;
+}
+updateWeekday();
+
+function addMonthsAdjust(date, months){
+  const y=date.getFullYear();
+  const m=date.getMonth();
+  const day=date.getDate();
+  const nm=m+months;
+  const nd=new Date(y, nm, 1);
+  const last=new Date(nd.getFullYear(), nd.getMonth()+1, 0).getDate();
+  return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last));
+}
+
+$('#generateBtn').addEventListener('click', ()=>{
+  const batchCode = $('#batchCode').value.trim();
+  const weekday = $('#weekday').value;
+  const shelfMonths = parseInt($('#shelfLife').value);
+  const singleLine = $('#singleLineCheck').checked;
+  const line = $('#lineSelect').value;
+  if(batchCode.length!==3){ alert('Nhập mã lô 3 ký tự'); return; }
+  const expiry = addMonthsAdjust(new Date(), shelfMonths);
+  const dd=String(expiry.getDate()).padStart(2,'0');
+  const mm=String(expiry.getMonth()+1).padStart(2,'0');
+  const yy=String(expiry.getFullYear()).slice(2);
+  const dateCode = dd+mm+yy;
+  let res='';
+  if(singleLine){ res = `${dateCode} ${batchCode}${line}${weekday}`; }
+  else{ ['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batchCode}${L}${weekday}\n`); res=res.trim(); }
+  $('#dateList').value = res;
 });
-$('#singleLineCheck').addEventListener('change',function(){$('#lineSelectWrapper').style.display=this.checked?'inline-block':'none';});
+$('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
 
 async function openCamera(){
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-    video.srcObject=stream;await video.play();
-    rawCanvas.width=video.videoWidth;rawCanvas.height=video.videoHeight;
-  }catch(e){alert('Không mở được camera: '+e.message);}
+    const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
+    video.srcObject = stream; await video.play();
+    rawCanvas.width = video.videoWidth; rawCanvas.height = video.videoHeight;
+  }catch(err){ alert('Không mở được camera: '+err.message); }
 }
-$('#openBtn').addEventListener('click',openCamera);
+$('#openBtn').addEventListener('click', openCamera);
 
-function onOpenCvReady(){cv.onRuntimeInitialized=()=>{cvReady=true;$('#loader').textContent='OpenCV: ready';};}
+function onOpenCvReady(){
+  cv['onRuntimeInitialized']=()=>{
+    cvReady=true;
+    $('#loader').textContent='OpenCV: ready';
+  };
+}
 
 function getRoi(){
-  const vRect=video.getBoundingClientRect(),oRect=overlay.getBoundingClientRect();
-  const scaleX=video.videoWidth/vRect.width,scaleY=video.videoHeight/vRect.height;
-  const x=Math.max(0,(oRect.left-vRect.left)*scaleX),y=Math.max(0,(oRect.top-vRect.top)*scaleY);
-  const w=Math.min(video.videoWidth-x,oRect.width*scaleX),h=Math.min(video.videoHeight-y,oRect.height*scaleY);
-  return {x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(h)};
+  const vRect = video.getBoundingClientRect();
+  const oRect = overlay.getBoundingClientRect();
+  const scaleX = video.videoWidth / vRect.width;
+  const scaleY = video.videoHeight / vRect.height;
+  const x = Math.max(0, (oRect.left - vRect.left) * scaleX);
+  const y = Math.max(0, (oRect.top - vRect.top) * scaleY);
+  const w = Math.min(video.videoWidth - x, oRect.width * scaleX);
+  const h = Math.min(video.videoHeight - y, oRect.height * scaleY);
+  return {x:Math.round(x), y:Math.round(y), w:Math.round(w), h:Math.round(h)};
 }
 
 function processFrame(){
-  if(!cvReady||video.readyState<2)return null;
-  const rctx=rawCanvas.getContext('2d');rctx.drawImage(video,0,0,rawCanvas.width,rawCanvas.height);
-  let src=cv.imread(rawCanvas),{x,y,w,h}=getRoi(),roi=src.roi(new cv.Rect(x,y,w,h));
-  // preview crop
-  cv.imshow(cropPrev,roi);
-  let gray=new cv.Mat();cv.cvtColor(roi,gray,cv.COLOR_RGBA2GRAY,0);
-  let up=new cv.Mat();cv.resize(gray,up,new cv.Size(0,0),3,3,cv.INTER_CUBIC);
-  let blur=new cv.Mat();cv.GaussianBlur(up,blur,new cv.Size(3,3),0);
-  let bin=new cv.Mat();cv.adaptiveThreshold(blur,bin,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY,21,10);
-  let kernel=cv.getStructuringElement(cv.MORPH_RECT,new cv.Size(2,2)),opened=new cv.Mat();
-  cv.morphologyEx(bin,opened,cv.MORPH_OPEN,kernel);
-  let sharp=new cv.Mat(),openedBlur=new cv.Mat();
-  cv.GaussianBlur(opened,openedBlur,new cv.Size(0,0),1.0);
-  cv.addWeighted(opened,1.5,openedBlur,-0.5,0,sharp);
-  const mean=cv.mean(sharp)[0];let proc=new cv.Mat();
-  if(mean<127){cv.bitwise_not(sharp,proc);}else{proc=sharp.clone();}
-  // preview processed
-  cv.imshow(procPrev,proc);
-  src.delete();roi.delete();gray.delete();up.delete();blur.delete();bin.delete();opened.delete();kernel.delete();openedBlur.delete();
+  if(!cvReady || video.readyState<2) return null;
+  const rctx = rawCanvas.getContext('2d');
+  rctx.drawImage(video, 0, 0, rawCanvas.width, rawCanvas.height);
+  let src = cv.imread(rawCanvas);
+  const {x,y,w,h} = getRoi();
+  let roi = src.roi(new cv.Rect(x,y,w,h));
+  let gray = new cv.Mat();
+  cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
+
+  let up = new cv.Mat();
+  cv.resize(gray, up, new cv.Size(gray.cols*3, gray.rows*3), 0, 0, cv.INTER_CUBIC);
+
+  let blur = new cv.Mat();
+  cv.medianBlur(up, blur, 3);
+
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
+  let opened = new cv.Mat();
+  cv.morphologyEx(blur, opened, cv.MORPH_OPEN, kernel);
+
+  let bin = new cv.Mat();
+  cv.adaptiveThreshold(opened, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
+
+  let proc = new cv.Mat();
+  const mean = cv.mean(bin)[0];
+  if(mean < 127){ cv.bitwise_not(bin, proc); } else { proc = bin.clone(); }
+
+  src.delete(); roi.delete(); gray.delete(); up.delete(); blur.delete(); opened.delete(); kernel.delete(); bin.delete();
   return proc;
 }
 
 function postProcess(text){
-  let chars=text.split(''),regex=/^\d{6} \d{3}[A-I][1-7]$/;
-  if(regex.test(text))return text;
-  let changes=0;
+  let chars = text.split('');
+  const regex = /^\d{6} \d{3}[A-I][1-7]$/;
+  if(regex.test(text)) return text;
+  let changes = 0;
   for(let i=0;i<chars.length;i++){
-    if(i<=5&&!/[0-9]/.test(chars[i])){chars[i]='0';changes++;}
-    if(i===6&&chars[i]!==' '){chars[i]=' ';changes++;}
-    if(i>=7&&i<=9&&!/[0-9]/.test(chars[i])){chars[i]='0';changes++;}
-    if(i===10&&!/[A-I]/.test(chars[i])){chars[i]='A';changes++;}
-    if(i===11&&!/[1-7]/.test(chars[i])){chars[i]='1';changes++;}
+    if(i>=0 && i<=5 && !/[0-9]/.test(chars[i])){ chars[i] = '0'; changes++; }
+    if(i===6 && chars[i]!==' '){ chars[i] = ' '; changes++; }
+    if(i>=7 && i<=9 && !/[0-9]/.test(chars[i])){ chars[i] = '0'; changes++; }
+    if(i===10 && !/[A-I]/.test(chars[i])){ chars[i] = 'A'; changes++; }
+    if(i===11 && !/[1-7]/.test(chars[i])){ chars[i] = '1'; changes++; }
   }
-  const fixed=chars.join('');
-  return changes<=2&&regex.test(fixed)?fixed:text;
+  const fixed = chars.join('');
+  return changes<=2 && regex.test(fixed) ? fixed : text;
 }
 
 async function runTesseract(procMat){
-  const tmp=document.createElement('canvas');tmp.width=procMat.cols;tmp.height=procMat.rows;
-  cv.imshow(tmp,procMat);
-  const {data:{text}}=await Tesseract.recognize(tmp,'eng',{tessedit_char_whitelist:'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ '});
-  let cleaned=text.replace(/\s+/g,' ').trim().toUpperCase().replace(/[^0-9A-Z ]/g,'');
-  return postProcess(cleaned);
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = procMat.cols; tmpCanvas.height = procMat.rows;
+  cv.imshow(tmpCanvas, procMat);
+  const { data: { text } } = await Tesseract.recognize(tmpCanvas, 'eng', {
+    tessedit_char_whitelist: '0123456789ABCDEFGHI '
+  });
+  let cleaned = text.replace(/\s+/g,' ').trim().toUpperCase();
+  cleaned = cleaned.replace(/[^0-9A-I ]/g,'');
+  cleaned = postProcess(cleaned);
+  return cleaned;
 }
 
 async function captureOnce(){
-  const procMat=processFrame();if(!procMat)return;
-  const cleaned=await runTesseract(procMat);
-  ocrTextDiv.textContent=cleaned;
-  const targets=$('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-  const matched=targets.includes(cleaned);
-  resultDiv.textContent=matched?'✅ ĐÚNG':'❌ SAI';
-  resultDiv.className='status '+(matched?'ok':'fail');
+  const procMat = processFrame();
+  if(!procMat) return;
+  const cleaned = await runTesseract(procMat);
+  ocrTextDiv.textContent = cleaned;
+  const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
+  const matched = targets.includes(cleaned);
+  resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+  resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
   procMat.delete();
 }
-$('#captureBtn').addEventListener('click',captureOnce);
+$('#captureBtn').addEventListener('click', captureOnce);
 
-$('#toggleAuto').addEventListener('click', function () {
-  autoScan = !autoScan;
-  this.textContent = 'Auto Scan: ' + (autoScan ? 'ON' : 'OFF');
-
-  if (autoScan) {
-    const loop = async () => {
-      if (!autoScan) return;
-
+$('#toggleAuto').addEventListener('click', async function(){
+  autoScan = !autoScan; this.textContent = 'Auto Scan: ' + (autoScan? 'ON':'OFF');
+  if(autoScan){
+    const loop = async()=>{
+      if(!autoScan) return;
       const procMat = processFrame();
-      if (procMat) {
+      if(procMat){
         const cleaned = await runTesseract(procMat);
         ocrTextDiv.textContent = cleaned;
-
-        const targets = $('#dateList').value
-          .split('\n')
-          .map(v => v.trim())
-          .filter(Boolean);
-
+        const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
         const matched = targets.includes(cleaned);
-
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-        resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
-
+        resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
+        if(matched) autoScan = false; // Dừng khi đúng
         procMat.delete();
-
-        if (matched) {
-          autoScan = false;
-          $('#toggleAuto').textContent = 'Auto Scan: OFF';
-          return; // Dừng quét khi khớp
-        }
       }
-      autoTimer = setTimeout(loop, 600);
+      if(autoScan) autoTimer = setTimeout(loop, 600);
     };
     loop();
-  } else {
-    if (autoTimer) clearTimeout(autoTimer);
-  }
+  } else { if(autoTimer) clearTimeout(autoTimer); }
 });
 </script>
 </body>
