@@ -105,8 +105,8 @@ let cvReady = false;
 // Âm thanh "ting ting"
 let tingAudio = null;
 function initTingAudio(){
-  tingAudio = new Audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg");
-  tingAudio.volume = 1.0;
+    const beepSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.mp3');
+  beepSound.volume = 1.0;
 }
 function playTing(){
   if(tingAudio){
@@ -246,7 +246,7 @@ function postProcess(text){
     if(i===11 && !/[1-7]/.test(chars[i])){ chars[i] = '1'; changes++; }
   }
   const fixed = chars.join('');
-  return changes<=2 && regex.test(fixed) ? fixed : text;
+  return changes<=2 && regex.test(fixed) ? fixed: text;
 }
 
 async function runTesseract(procMat){
