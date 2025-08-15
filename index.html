@@ -107,17 +107,14 @@ function drawCross(){
   ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
   ctx.strokeStyle = 'rgba(255,0,0,0.95)'; 
   ctx.lineWidth = 3; 
-
   const centerX = crossOverlay.width / 2;
   const centerY = crossOverlay.height / 2;
   const vLen = 50; 
   const hLen = 50; 
-
   ctx.beginPath();
   ctx.moveTo(centerX - hLen/2, centerY);
   ctx.lineTo(centerX + hLen/2, centerY);
   ctx.stroke();
-
   ctx.beginPath();
   ctx.moveTo(centerX, centerY - vLen/2);
   ctx.lineTo(centerX, centerY + vLen/2);
@@ -166,14 +163,10 @@ async function openCamera(){
     const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
     video.srcObject = stream; 
     await video.play();
-
-    // Overlay trùng với kích thước hiển thị
     crossOverlay.width = video.clientWidth;
     crossOverlay.height = video.clientHeight;
-
     rawCanvas.width = video.videoWidth; 
     rawCanvas.height = video.videoHeight;
-
     drawCross();
   }catch(err){ alert('Không mở được camera: '+err.message); }
 }
@@ -261,6 +254,9 @@ async function captureOnce(){
   const matched = targets.includes(cleaned);
   resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
   resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
+  if (matched && "vibrate" in navigator) {
+    navigator.vibrate(200);
+  }
   procMat.delete();
 }
 $('#captureBtn').addEventListener('click', captureOnce);
@@ -278,7 +274,12 @@ $('#toggleAuto').addEventListener('click', async function(){
         const matched = targets.includes(cleaned);
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
         resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
-        if(matched) autoScan = false;
+        if (matched) {
+          if ("vibrate" in navigator) {
+            navigator.vibrate(200);
+          }
+          autoScan = false;
+        }
         procMat.delete();
       }
       if(autoScan) autoTimer = setTimeout(loop, 600);
