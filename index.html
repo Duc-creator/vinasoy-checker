@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-<title>OCR Date Checker Vinasoy (NĐT)</title>
+<title>OCR Date Checker Vinasoy (ndt)</title>
 <style>
 :root{ --w: 340px; --h: 240px; }
 body{ font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; margin:0; }
@@ -93,23 +93,6 @@ canvas{ display:none; }
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script>
-// ===== Thêm âm thanh ting ting =====
-const beepSound = new Audio('https://www.soundjay.com/button/beep-07.mp3');
-beepSound.volume = 1.0;
-
-// Hàm mở khóa audio cho iOS
-async function unlockAudio() {
-    try {
-        beepSound.currentTime = 0;
-        await beepSound.play();
-        beepSound.pause();
-        beepSound.currentTime = 0;
-        console.log("Audio unlocked for iOS");
-    } catch (e) {
-        console.log("Audio unlock failed", e);
-    }
-}
-
 const $ = (s) => document.querySelector(s);
 const video = $('#video');
 const crossOverlay = $('#crossOverlay');
@@ -119,6 +102,20 @@ const rawCanvas = $('#rawCanvas');
 let autoScan = false, autoTimer = null;
 let cvReady = false;
 
+// Âm thanh "ting ting"
+let tingAudio = null;
+function initTingAudio(){
+  tingAudio = new Audio("https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg");
+  tingAudio.volume = 1.0;
+}
+function playTing(){
+  if(tingAudio){
+    tingAudio.currentTime = 0;
+    tingAudio.play().catch(()=>{});
+  }
+}
+
+// Crosshair
 function drawCross(){
   const ctx = crossOverlay.getContext('2d');
   ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
@@ -138,6 +135,7 @@ function drawCross(){
   ctx.stroke();
 }
 
+// Ngày
 function updateWeekday(){
   const d=new Date();
   const day=d.getDay();
@@ -176,8 +174,9 @@ $('#generateBtn').addEventListener('click', ()=>{
 $('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
 
 async function openCamera(){
-  await unlockAudio();
   try{
+    // Khởi tạo audio sau khi người dùng bấm
+    if(!tingAudio) initTingAudio();
     const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
     video.srcObject = stream; 
     await video.play();
@@ -264,7 +263,6 @@ async function runTesseract(procMat){
 }
 
 async function captureOnce(){
-  await unlockAudio();
   const procMat = processFrame();
   if(!procMat) return;
   const cleaned = await runTesseract(procMat);
@@ -274,11 +272,8 @@ async function captureOnce(){
   resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
   resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
   if (matched) {
-    beepSound.currentTime = 0;
-    beepSound.play().catch(err => console.log(err));
-    if ("vibrate" in navigator) {
-      navigator.vibrate(200);
-    }
+    if ("vibrate" in navigator) navigator.vibrate(200);
+    playTing();
   }
   procMat.delete();
 }
@@ -298,11 +293,8 @@ $('#toggleAuto').addEventListener('click', async function(){
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
         resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
         if (matched) {
-          beepSound.currentTime = 0;
-          beepSound.play().catch(err => console.log(err));
-          if ("vibrate" in navigator) {
-            navigator.vibrate(200);
-          }
+          if ("vibrate" in navigator) navigator.vibrate(200);
+          playTing();
           autoScan = false;
         }
         procMat.delete();
