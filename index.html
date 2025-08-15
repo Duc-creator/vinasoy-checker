@@ -93,6 +93,10 @@ canvas{ display:none; }
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script>
+// ===== Thêm âm thanh tinh tinh =====
+const beepSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+beepSound.volume = 1.0;
+
 const $ = (s) => document.querySelector(s);
 const video = $('#video');
 const crossOverlay = $('#crossOverlay');
@@ -254,8 +258,12 @@ async function captureOnce(){
   const matched = targets.includes(cleaned);
   resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
   resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
-  if (matched && "vibrate" in navigator) {
-    navigator.vibrate(200);
+  if (matched) {
+    beepSound.currentTime = 0;
+    beepSound.play().catch(err => console.log(err));
+    if ("vibrate" in navigator) {
+      navigator.vibrate(200);
+    }
   }
   procMat.delete();
 }
@@ -275,6 +283,8 @@ $('#toggleAuto').addEventListener('click', async function(){
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
         resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
         if (matched) {
+          beepSound.currentTime = 0;
+          beepSound.play().catch(err => console.log(err));
           if ("vibrate" in navigator) {
             navigator.vibrate(200);
           }
