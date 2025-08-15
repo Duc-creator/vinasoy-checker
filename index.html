@@ -17,7 +17,15 @@ button:active{ transform:translateY(1px); }
 textarea{ width:100%; min-height:120px; }
 .camera{ position:relative; display:inline-block; }
 video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; border:2px solid #e3e7ee; background:#000; }
-#crossOverlay{ position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+#crossOverlay{ 
+  position:absolute; 
+  top:0; 
+  left:0; 
+  width:100%; 
+  height:100%; 
+  pointer-events:none;
+  display:block;
+}
 .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
 .status{ font-weight:700; font-size:16px; }
 .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
@@ -97,13 +105,13 @@ let cvReady = false;
 function drawCross(){
   const ctx = crossOverlay.getContext('2d');
   ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
-  ctx.strokeStyle = 'rgba(255,0,0,0.95)'; // đỏ tươi
-  ctx.lineWidth = 3; // đậm hơn
+  ctx.strokeStyle = 'rgba(255,0,0,0.95)'; 
+  ctx.lineWidth = 3; 
 
   const centerX = crossOverlay.width / 2;
   const centerY = crossOverlay.height / 2;
-  const vLen = 50; // dài hơn
-  const hLen = 50; // dài hơn
+  const vLen = 50; 
+  const hLen = 50; 
 
   ctx.beginPath();
   ctx.moveTo(centerX - hLen/2, centerY);
@@ -158,11 +166,13 @@ async function openCamera(){
     const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
     video.srcObject = stream; 
     await video.play();
+
+    // Overlay trùng với kích thước hiển thị
+    crossOverlay.width = video.clientWidth;
+    crossOverlay.height = video.clientHeight;
+
     rawCanvas.width = video.videoWidth; 
     rawCanvas.height = video.videoHeight;
-
-    crossOverlay.width = video.videoWidth; 
-    crossOverlay.height = video.videoHeight;
 
     drawCross();
   }catch(err){ alert('Không mở được camera: '+err.message); }
@@ -267,7 +277,7 @@ $('#toggleAuto').addEventListener('click', async function(){
         const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
         const matched = targets.includes(cleaned);
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-        resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
+        resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
         if(matched) autoScan = false;
         procMat.delete();
       }
