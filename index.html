@@ -97,46 +97,25 @@ let cvReady = false;
 function drawCross(){
   const ctx = crossOverlay.getContext('2d');
   ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
-  ctx.strokeStyle = 'rgba(255,62,62,0.9)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,0,0,0.95)'; // đỏ tươi
+  ctx.lineWidth = 3; // đậm hơn
 
   const centerX = crossOverlay.width / 2;
   const centerY = crossOverlay.height / 2;
-  const vLen = 20; // chiều dài gạch đứng
-  const hLen = vLen * 7; // chiều dài gạch ngang gấp 7 lần
+  const vLen = 50; // dài hơn
+  const hLen = 50; // dài hơn
 
-  // Gạch ngang
   ctx.beginPath();
   ctx.moveTo(centerX - hLen/2, centerY);
   ctx.lineTo(centerX + hLen/2, centerY);
   ctx.stroke();
 
-  // Gạch đứng
   ctx.beginPath();
   ctx.moveTo(centerX, centerY - vLen/2);
   ctx.lineTo(centerX, centerY + vLen/2);
   ctx.stroke();
 }
-async function openCamera(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } }, audio:false
-    });
-    video.srcObject = stream;
-    await video.play();
 
-    // Đảm bảo overlay cùng kích thước video hiển thị
-    crossOverlay.width = video.videoWidth;
-    crossOverlay.height = video.videoHeight;
-
-    rawCanvas.width = video.videoWidth;
-    rawCanvas.height = video.videoHeight;
-
-    drawCross();
-  }catch(err){
-    alert('Không mở được camera: '+err.message);
-  }
-}
 function updateWeekday(){
   const d=new Date();
   const day=d.getDay();
@@ -177,10 +156,14 @@ $('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapp
 async function openCamera(){
   try{
     const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
-    video.srcObject = stream; await video.play();
-    rawCanvas.width = video.videoWidth; rawCanvas.height = video.videoHeight;
-    crossOverlay.width = video.clientWidth;
-    crossOverlay.height = video.clientHeight;
+    video.srcObject = stream; 
+    await video.play();
+    rawCanvas.width = video.videoWidth; 
+    rawCanvas.height = video.videoHeight;
+
+    crossOverlay.width = video.videoWidth; 
+    crossOverlay.height = video.videoHeight;
+
     drawCross();
   }catch(err){ alert('Không mở được camera: '+err.message); }
 }
@@ -196,8 +179,8 @@ function onOpenCvReady(){
 function getRoiFromPlusSign(){
   const centerX = video.videoWidth / 2;
   const centerY = video.videoHeight / 2;
-  const roiWidth = 160;
-  const roiHeight = 56;
+  const roiWidth = 240;  
+  const roiHeight = 84;  
   const x = Math.max(0, centerX - roiWidth / 2);
   const y = Math.max(0, centerY - roiHeight / 2);
   return {x:Math.round(x), y:Math.round(y), w:roiWidth, h:roiHeight};
@@ -224,7 +207,6 @@ function processFrame(){
   let proc = new cv.Mat();
   const mean = cv.mean(bin)[0];
   if(mean < 127){ cv.bitwise_not(bin, proc); } else { proc = bin.clone(); }
-  // preview
   cv.imshow($('#cropPreview'), roi);
   cv.imshow($('#procPreview'), proc);
   src.delete(); roi.delete(); gray.delete(); up.delete(); blur.delete(); opened.delete(); kernel.delete(); bin.delete();
@@ -285,7 +267,7 @@ $('#toggleAuto').addEventListener('click', async function(){
         const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
         const matched = targets.includes(cleaned);
         resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-        resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
+        resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
         if(matched) autoScan = false;
         procMat.delete();
       }
