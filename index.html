@@ -93,9 +93,22 @@ canvas{ display:none; }
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script>
-// ===== Thêm âm thanh tinh tinh =====
-const beepSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.mp3');
+// ===== Thêm âm thanh ting ting =====
+const beepSound = new Audio('https://www.soundjay.com/button/beep-07.mp3');
 beepSound.volume = 1.0;
+
+// Hàm mở khóa audio cho iOS
+async function unlockAudio() {
+    try {
+        beepSound.currentTime = 0;
+        await beepSound.play();
+        beepSound.pause();
+        beepSound.currentTime = 0;
+        console.log("Audio unlocked for iOS");
+    } catch (e) {
+        console.log("Audio unlock failed", e);
+    }
+}
 
 const $ = (s) => document.querySelector(s);
 const video = $('#video');
@@ -163,6 +176,7 @@ $('#generateBtn').addEventListener('click', ()=>{
 $('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
 
 async function openCamera(){
+  await unlockAudio();
   try{
     const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
     video.srcObject = stream; 
@@ -250,6 +264,7 @@ async function runTesseract(procMat){
 }
 
 async function captureOnce(){
+  await unlockAudio();
   const procMat = processFrame();
   if(!procMat) return;
   const cleaned = await runTesseract(procMat);
