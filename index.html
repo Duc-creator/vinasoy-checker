@@ -433,32 +433,30 @@ $('#toggleAuto').addEventListener('click', async function(){
     loop();
   } else { if(autoTimer) clearTimeout(autoTimer); }
 });
-// Unlock audio cho iPhone
-function unlockAudio() {
-  const correct = document.getElementById("soundCorrect");
-  const wrong = document.getElementById("soundWrong");
+ // Unlock audio cho iPhone
+    function unlockAudio() {
+      const correct = document.getElementById("soundCorrect");
+      const wrong = document.getElementById("soundWrong");
+      correct.volume = 1.0;
+      wrong.volume = 1.0;
+      correct.currentTime = 0;
+      correct.play().catch(()=>{});
+      wrong.currentTime = 0;
+      wrong.play().catch(()=>{});
+      document.removeEventListener("touchstart", unlockAudio);
+      document.removeEventListener("click", unlockAudio);
+    }
+    document.addEventListener("touchstart", unlockAudio);
+    document.addEventListener("click", unlockAudio);
+  </script>
 
-  correct.volume = 1.0;
-  wrong.volume = 1.0;
-
-  // Phát một lần ngắn để Safari "mở khóa" audio
-  correct.currentTime = 0;
-  correct.play().catch(()=>{});
-  wrong.currentTime = 0;
-  wrong.play().catch(()=>{});
-
-  document.removeEventListener("touchstart", unlockAudio);
-  document.removeEventListener("click", unlockAudio);
-}
-document.addEventListener("touchstart", unlockAudio);
-document.addEventListener("click", unlockAudio);
-<!-- Âm thanh báo hiệu -->
-<audio id="soundCorrect" preload="auto">
-  <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
-</audio>
-<audio id="soundWrong" preload="auto">
-  <source src="https://actions.google.com/sounds/v1/alarms/beep_buzzer.ogg" type="audio/ogg">
-</audio>
+  <!-- Âm thanh báo hiệu -->
+  <audio id="soundCorrect" preload="auto">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+  </audio>
+  <audio id="soundWrong" preload="auto">
+    <source src="https://actions.google.com/sounds/v1/alarms/beep_buzzer.ogg" type="audio/ogg">
+  </audio>
 
 </body>
 </html>
