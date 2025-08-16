@@ -337,6 +337,18 @@ function postProcess(text){
   return regex.test(fixed) ? fixed: cleaned;
 }
 
+/* ======= Âm thanh báo hiệu (đúng/sai) ======= */
+// why: dùng Audio theo src hiện tại để phát 2 nhịp lớn, tránh bị chặn chồng tiếng
+function playSound(matched){
+  const el = matched ? $('#soundCorrect') : $('#soundWrong');
+  const src = el.currentSrc || el.querySelector('source')?.src;
+  if(!src) return;
+  const vol = 1.0; // to nhất trình duyệt cho phép
+  const playOnce = () => { const a = new Audio(src); a.volume = vol; a.play().catch(()=>{}); };
+  playOnce();
+  setTimeout(playOnce, 140); // hai nhịp "ting-ting"/"tè-tè"
+}
+
 /* ======= OCR ======= */
 async function runTesseract(procMat){
   await ensureWorker();
@@ -371,6 +383,7 @@ async function captureOnce(){
     resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
     resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
 
+    playSound(matched); // <— thêm âm thanh
     if (matched && "vibrate" in navigator) navigator.vibrate(200);
   } finally {
     procMat.delete();
@@ -402,6 +415,8 @@ $('#toggleAuto').addEventListener('click', async function(){
             resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
             resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
 
+            playSound(matched); // <— thêm âm thanh
+
             if (matched){
               if ("vibrate" in navigator) navigator. vibrate(200);
               autoScan = false;
@@ -419,5 +434,14 @@ $('#toggleAuto').addEventListener('click', async function(){
   } else { if(autoTimer) clearTimeout(autoTimer); }
 });
 </script>
+
+<!-- Âm thanh báo hiệu -->
+<audio id="soundCorrect" preload="auto">
+  <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
+</audio>
+<audio id="soundWrong" preload="auto">
+  <source src="https://actions.google.com/sounds/v1/alarms/beep_buzzer.ogg" type="audio/ogg">
+</audio>
+
 </body>
 </html>
