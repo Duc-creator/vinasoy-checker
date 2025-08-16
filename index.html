@@ -54,7 +54,8 @@ canvas{ display:none; }
 <textarea id="dateList" placeholder="Danh sách date code..."></textarea>
 
 <div class="mini">
-  <button id="cameraBtn">Bật camera</button>
+  <button id="openBtn">Bật camera</button>
+  
   <button id="toggleAuto">Auto Scan: OFF</button>
   <span id="loader" class="muted">Templates: chưa tải</span>
 </div>
@@ -86,6 +87,7 @@ canvas{ display:none; }
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script>
+/* ======= DOM & STATE ======= */
 const $ = (s) => document.querySelector(s);
 const video = $('#video');
 const crossOverlay = $('#crossOverlay');
@@ -95,23 +97,71 @@ const rawCanvas = $('#rawCanvas');
 let autoScan = false, autoTimer = null;
 let cvReady = false;
 let ocrBusy = false;
-let stream = null;
 
+/* Tesseract worker (khởi tạo một lần) */
 let worker = null;
 let workerReady = false;
 
-/* ==== Toggle Camera ==== */
-async function toggleCamera(){
-  if(stream){ 
-    // đang bật -> tắt
-    stream.getTracks().forEach(t=>t.stop());
-    video.srcObject = null;
-    stream = null;
-    $('#cameraBtn').textContent = 'Bật camera';
-    return;
-  }
+/* ======= UI ======= */
+function drawCross(){
+  const ctx = crossOverlay.getContext('2d');
+  ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
+  ctx.strokeStyle = 'rgba(255,0,0,0.95)'; 
+  ctx.lineWidth = 3; 
+  const centerX = crossOverlay.width / 2;
+  const centerY = crossOverlay.height / 2;
+  const vLen = 50, hLen = 50;
+  ctx.beginPath(); ctx.moveTo(centerX - hLen/2, centerY); ctx.lineTo(centerX + hLen/2, centerY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(centerX, centerY - vLen/2); ctx.lineTo(centerX, centerY + vLen/2); ctx.stroke();
+}
+window.addEventListener('resize', ()=>{ 
+  // Vì video element thay đổi kích thước theo viewport
+  crossOverlay.width = video.clientWidth;
+  crossOverlay.height = video.clientHeight;
+  drawCross();
+});
+
+function updateWeekday(){
+  const d=new Date();
+  const day=d.getDay();
+  const weekday=(day===0)?1:day+1;
+  $('#weekday').value=weekday;
+}
+updateWeekday();
+
+function addMonthsAdjust(date, months){
+  const y=date.getFullYear();
+  const m=date.getMonth();
+  const day=date.getDate();
+  const nm=m+months;
+  const nd=new Date(y, nm, 1);
+  const last=new Date(nd.getFullYear(), nd.getMonth()+1, 0).getDate();
+  return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last));
+}
+
+$('#generateBtn').addEventListener('click', ()=>{
+  const batchCode = $('#batchCode').value.trim();
+  const weekday = $('#weekday').value;
+  const shelfMonths = parseInt($('#shelfLife').value);
+  const singleLine = $('#singleLineCheck').checked;
+  const line = $('#lineSelect').value;
+  if(batchCode.length!==3){ alert('Nhập mã lô 3 ký tự'); return; }
+  const expiry = addMonthsAdjust(new Date(), shelfMonths);
+  const dd=String(expiry.getDate()).padStart(2,'0');
+  const mm=String(expiry.getMonth()+1).padStart(2,'0');
+  const yy=String(expiry.getFullYear()).slice(2);
+  const dateCode = dd+mm+yy;
+  let res='';
+  if(singleLine){ res = `${dateCode} ${batchCode}${line}${weekday}`; }
+  else{ ['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batchCode}${L}${weekday}\n`); res=res.trim(); }
+  $('#dateList').value = res;
+});
+$('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
+
+/* ======= Camera & OpenCV ======= */
+async function openCamera(){
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
+    const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
     video.srcObject = stream; 
     await video.play();
     crossOverlay.width = video.clientWidth;
@@ -119,10 +169,9 @@ async function toggleCamera(){
     rawCanvas.width = video.videoWidth; 
     rawCanvas.height = video.videoHeight;
     drawCross();
-    $('#cameraBtn').textContent = 'Tắt camera';
   }catch(err){ alert('Không mở được camera: '+err.message); }
 }
-$('#cameraBtn').addEventListener('click', toggleCamera);
+$('#openBtn').addEventListener('click', openCamera);
 
 function onOpenCvReady(){
   cv['onRuntimeInitialized']=()=>{
