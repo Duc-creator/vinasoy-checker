@@ -433,6 +433,15 @@ $('#toggleAuto').addEventListener('click', async function(){
     loop();
   } else { if(autoTimer) clearTimeout(autoTimer); }
 });
+// Unlock audio cho iPhone
+function unlockAudio() {
+  document.getElementById("soundCorrect").play().catch(()=>{});
+  document.getElementById("soundWrong").play().catch(()=>{});
+  document.removeEventListener("touchstart", unlockAudio);
+  document.removeEventListener("click", unlockAudio);
+}
+document.addEventListener("touchstart", unlockAudio);
+document.addEventListener("click", unlockAudio);
 </script>
 
 <!-- Âm thanh báo hiệu -->
