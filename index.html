@@ -368,11 +368,8 @@ async function captureOnce(){
       ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
       : cleaned;
 
-      if (matched) {
-        updateResult("Đúng");
-      } else {
-        updateResult("Sai");
-      }
+    resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+    resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
 
     if (matched && "vibrate" in navigator) navigator.vibrate(200);
   } finally {
@@ -402,11 +399,8 @@ $('#toggleAuto').addEventListener('click', async function(){
               ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
               : cleaned;
 
-              if (matched) {
-                updateResult("Đúng");
-              } else {
-                updateResult("Sai");
-              }
+            resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+            resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
 
             if (matched){
               if ("vibrate" in navigator) navigator. vibrate(200);
@@ -424,32 +418,6 @@ $('#toggleAuto').addEventListener('click', async function(){
     loop();
   } else { if(autoTimer) clearTimeout(autoTimer); }
 });
-let lastResult = null;
-
-function updateResult(text) {
-  const resultEl = document.getElementById('result');
-
-  if (text === "Đúng") {
-    resultEl.textContent = "✅ ĐÚNG";
-    resultEl.className = "status ok";
-    if (lastResult !== "Đúng") {
-      document.getElementById('successSound').play();
-    }
-  } else if (text === "Sai") {
-    resultEl.textContent = "❌ SAI";
-    resultEl.className = "status fail";
-    if (lastResult !== "Sai") {
-      document.getElementById('failSound').play();
-    }
-  } else {
-    resultEl.textContent = "—";
-    resultEl.className = "status muted";
-  }
-
-  lastResult = text;
-}
-<audio id="successSound" src="ting.mp3" preload="auto"></audio>
-<audio id="failSound" src="beep.mp3" preload="auto"></audio>
 </script>
 </body>
 </html>
