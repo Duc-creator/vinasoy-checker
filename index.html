@@ -1,3 +1,4 @@
+<!-- /index.html -->
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -17,15 +18,7 @@ button:active{ transform:translateY(1px); }
 textarea{ width:100%; min-height:120px; }
 .camera{ position:relative; display:inline-block; }
 video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; border:2px solid #e3e7ee; background:#000; }
-#crossOverlay{ 
-  position:absolute; 
-  top:0; 
-  left:0; 
-  width:100%; 
-  height:100%; 
-  pointer-events:none;
-  display:block;
-}
+#crossOverlay{ position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; display:block; }
 .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
 .status{ font-weight:700; font-size:16px; }
 .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
@@ -93,6 +86,7 @@ canvas{ display:none; }
 <script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 <script>
+/* ======= DOM & STATE ======= */
 const $ = (s) => document.querySelector(s);
 const video = $('#video');
 const crossOverlay = $('#crossOverlay');
@@ -101,7 +95,13 @@ const ocrTextDiv = $('#ocrText');
 const rawCanvas = $('#rawCanvas');
 let autoScan = false, autoTimer = null;
 let cvReady = false;
+let ocrBusy = false;
 
+/* Tesseract worker (khởi tạo một lần) */
+let worker = null;
+let workerReady = false;
+
+/* ======= UI ======= */
 function drawCross(){
   const ctx = crossOverlay.getContext('2d');
   ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
@@ -109,17 +109,16 @@ function drawCross(){
   ctx.lineWidth = 3; 
   const centerX = crossOverlay.width / 2;
   const centerY = crossOverlay.height / 2;
-  const vLen = 50; 
-  const hLen = 50; 
-  ctx.beginPath();
-  ctx.moveTo(centerX - hLen/2, centerY);
-  ctx.lineTo(centerX + hLen/2, centerY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(centerX, centerY - vLen/2);
-  ctx.lineTo(centerX, centerY + vLen/2);
-  ctx.stroke();
+  const vLen = 50, hLen = 50;
+  ctx.beginPath(); ctx.moveTo(centerX - hLen/2, centerY); ctx.lineTo(centerX + hLen/2, centerY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(centerX, centerY - vLen/2); ctx.lineTo(centerX, centerY + vLen/2); ctx.stroke();
 }
+window.addEventListener('resize', ()=>{ 
+  // Vì video element thay đổi kích thước theo viewport
+  crossOverlay.width = video.clientWidth;
+  crossOverlay.height = video.clientHeight;
+  drawCross();
+});
 
 function updateWeekday(){
   const d=new Date();
@@ -158,6 +157,7 @@ $('#generateBtn').addEventListener('click', ()=>{
 });
 $('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
 
+/* ======= Camera & OpenCV ======= */
 async function openCamera(){
   try{
     const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
@@ -189,100 +189,230 @@ function getRoiFromPlusSign(){
   return {x:Math.round(x), y:Math.round(y), w:roiWidth, h:roiHeight};
 }
 
+/* ======= Image Processing (tối ưu độ nét) ======= */
 function processFrame(){
   if(!cvReady || video.readyState<2) return null;
   const rctx = rawCanvas.getContext('2d');
   rctx.drawImage(video, 0, 0, rawCanvas.width, rawCanvas.height);
+
   let src = cv.imread(rawCanvas);
   const {x,y,w,h} = getRoiFromPlusSign();
   let roi = src.roi(new cv.Rect(x,y,w,h));
+
   let gray = new cv.Mat();
   cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
-  let up = new cv.Mat();
-  cv.resize(gray, up, new cv.Size(gray.cols*3, gray.rows*3), 0, 0, cv.INTER_CUBIC);
-  let blur = new cv.Mat();
-  cv.medianBlur(up, blur, 3);
-  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
-  let opened = new cv.Mat();
-  cv.morphologyEx(blur, opened, cv.MORPH_OPEN, kernel);
-  let bin = new cv.Mat();
-  cv.adaptiveThreshold(opened, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 10);
-  let proc = new cv.Mat();
-  const mean = cv.mean(bin)[0];
-  if(mean < 127){ cv.bitwise_not(bin, proc); } else { proc = bin.clone(); }
-  cv.imshow($('#cropPreview'), roi);
-  cv.imshow($('#procPreview'), proc);
-  src.delete(); roi.delete(); gray.delete(); up.delete(); blur.delete(); opened.delete(); kernel.delete(); bin.delete();
-  return proc;
-}
 
-function postProcess(text){
-  let chars = text.split('');
-  const regex = /^\d{6} \d{3}[A-I][1-7]$/;
-  if(regex.test(text)) return text;
-  let changes = 0;
-  for(let i=0;i<chars.length;i++){
-    if(i>=0 && i<=5 && !/[0-9]/.test(chars[i])){ chars[i] = '0'; changes++; }
-    if(i===6 && chars[i]!==' '){ chars[i] = ' '; changes++; }
-    if(i>=7 && i<=9 && !/[0-9]/.test(chars[i])){ chars[i] = '0'; changes++; }
-    if(i===10 && !/[A-I]/.test(chars[i])){ chars[i] = 'A'; changes++; }
-    if(i===11 && !/[1-7]/.test(chars[i])){ chars[i] = '1'; changes++; }
+  // CLAHE: tăng tương phản cục bộ (why: nền carton, mực mờ)
+  let claheMat = new cv.Mat();
+  try {
+    const clahe = new cv.CLAHE(2.0, new cv.Size(8,8));
+    clahe.apply(gray, claheMat);
+    clahe.delete && clahe.delete();
+  } catch(e){
+    claheMat = gray.clone(); // fallback nếu build OpenCV thiếu CLAHE
   }
-  const fixed = chars.join('');
-  return changes<=2 && regex.test(fixed) ? fixed : text;
+
+  // Unsharp mask: nét đậm hơn
+  let gauss = new cv.Mat(), sharp = new cv.Mat();
+  cv.GaussianBlur(claheMat, gauss, new cv.Size(0,0), 1.0);
+  cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
+
+  // Upscale x3
+  let up = new cv.Mat();
+  cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
+
+  // Threshold OTSU (ổn định hơn adaptive khi nền đều)
+  let bin = new cv.Mat();
+  cv.threshold(up, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+
+  // Đảm bảo chữ đen nền trắng
+  let mean = cv.mean(bin)[0];
+  let bw = new cv.Mat();
+  if(mean > 127){ // phần lớn pixel trắng -> text đen, ok
+    bw = bin.clone();
+  } else {
+    cv.bitwise_not(bin, bw);
+  }
+
+  // Close để liền nét + lọc nhiễu nhỏ
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
+  let closed = new cv.Mat();
+  cv.morphologyEx(bw, closed, cv.MORPH_CLOSE, kernel);
+
+  // Padding viền
+  let bordered = new cv.Mat();
+  cv.copyMakeBorder(closed, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
+
+  // Preview
+  cv.imshow($('#cropPreview'), roi);
+  cv.imshow($('#procPreview'), bordered);
+
+  // Cleanup
+  src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete(); up.delete();
+  bin.delete(); bw.delete(); kernel.delete(); closed.delete();
+
+  return bordered; // caller phải .delete()
 }
 
-async function runTesseract(procMat){
-  const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width = procMat.cols; tmpCanvas.height = procMat.rows;
-  cv.imshow(tmpCanvas, procMat);
-  const { data: { text } } = await Tesseract.recognize(tmpCanvas, 'eng', {
-    tessedit_char_whitelist: '0123456789ABCDEFGHI '
+/* ======= Tesseract Worker ======= */
+async function ensureWorker(){
+  if(workerReady) return;
+  $('#loader').textContent='Tesseract: loading...';
+  worker = await Tesseract.createWorker();
+  await worker.loadLanguage('eng');
+  await worker.initialize('eng');
+  await worker.setParameters({
+    tessedit_char_whitelist: '0123456789ABCDEFGHI ',
+    tessedit_pageseg_mode: '7',            // single line
+    preserve_interword_spaces: '1',
+    user_defined_dpi: '300'
   });
+  workerReady = true;
+  $('#loader').textContent='OpenCV: ready · Tesseract: ready';
+}
+
+/* ======= Fuzzy match có trọng số ======= */
+function charSubCost(a,b,pos){
+  if(a===b) return 0;
+  // cặp hay nhầm
+  const pair = a+b, pairR = b+a;
+  const soft = new Set(['0O','O0','5S','S5','8B','B8','90','09']);
+  if(soft.has(pair) || soft.has(pairR)) return 0.4;
+  if(pos===10 && ((a==='G'&&b==='A')||(a==='A'&&b==='G'))) return 0.5; // vị trí chữ
+  return 1;
+}
+function weightedEditDistance(a,b){
+  const n=a.length, m=b.length;
+  const dp = Array.from({length:n+1}, ()=>Array(m+1).fill(0));
+  for(let i=0;i<=n;i++) dp[i][0]=i;
+  for(let j=0;j<=m;j++) dp[0][j]=j;
+  for(let i=1;i<=n;i++){
+    for(let j=1;j<=m;j++){
+      const cost = charSubCost(a[i-1], b[j-1], j-1);
+      dp[i][j] = Math.min(
+        dp[i-1][j] + 1,      // delete
+        dp[i][j-1] + 1,      // insert
+        dp[i-1][j-1] + cost  // substitute
+      );
+    }
+  }
+  return dp[n][m];
+}
+function bestFuzzy(targets, text){
+  let best=null, bestScore=1e9;
+  for(const t of targets){
+    const s = weightedEditDistance(text, t);
+    if(s < bestScore){ bestScore=s; best=t; }
+  }
+  return {best, dist: bestScore};
+}
+
+/* ======= Post-process dạng cứng theo pattern ======= */
+function postProcess(text){
+  // Chuẩn hoá
   let cleaned = text.replace(/\s+/g,' ').trim().toUpperCase();
   cleaned = cleaned.replace(/[^0-9A-I ]/g,'');
-  cleaned = postProcess(cleaned);
-  return cleaned;
+  // Pattern đích: d{6} sp d{3} [A-I] [1-7]
+  const regex = /^\d{6} \d{3}[A-I][1-7]$/;
+  if(regex.test(cleaned)) return cleaned;
+
+  // Sửa lỗi theo vị trí (why: giảm 9→0, G→A)
+  const chars = cleaned.padEnd(12, ' ').split('');
+  // 0..5
+  for(let i=0;i<=5;i++) if(!/[0-9]/.test(chars[i])) chars[i]='0';
+  // 6 = space
+  chars[6] = ' ';
+  // 7..9
+  for(let i=7;i<=9;i++){
+    if(/[OSB]/.test(chars[i])) chars[i] = ({'O':'0','S':'5','B':'8'})[chars[i]];
+    if(!/[0-9]/.test(chars[i])) chars[i]='0';
+  }
+  // 10 = letter
+  if(!/[A-I]/.test(chars[10])) chars[10]='A';
+  // 11 = weekday
+  if(!/[1-7]/.test(chars[11])) chars[11]='1';
+
+  const fixed = chars.join('').slice(0,12);
+  return regex.test(fixed) ? fixed: cleaned;
 }
 
+/* ======= OCR ======= */
+async function runTesseract(procMat){
+  await ensureWorker();
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width = procMat.cols; 
+  tmpCanvas.height = procMat.rows;
+  cv.imshow(tmpCanvas, procMat);
+
+  const { data: { text } } = await worker.recognize(tmpCanvas);
+  tmpCanvas.width = tmpCanvas.height = 0; // giải phóng
+  tmpCanvas.remove();
+  return postProcess(text);
+}
+
+/* ======= Capture ======= */
 async function captureOnce(){
+  if(ocrBusy) return;
   const procMat = processFrame();
   if(!procMat) return;
-  const cleaned = await runTesseract(procMat);
-  ocrTextDiv.textContent = cleaned;
-  const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-  const matched = targets.includes(cleaned);
-  resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-  resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
-  if (matched && "vibrate" in navigator) {
-    navigator.vibrate(200);
+  ocrBusy = true;
+  try{
+    const cleaned = await runTesseract(procMat);
+    const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
+    const {best, dist} = bestFuzzy(targets, cleaned);
+    const matched = !!best && dist <= 1.2;
+
+    // UI
+    ocrTextDiv.textContent = matched 
+      ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
+      : cleaned;
+
+    resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+    resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
+
+    if (matched && "vibrate" in navigator) navigator.vibrate(200);
+  } finally {
+    procMat.delete();
+    ocrBusy = false;
   }
-  procMat.delete();
 }
 $('#captureBtn').addEventListener('click', captureOnce);
 
+/* ======= Auto Scan (chống chạy chồng) ======= */
 $('#toggleAuto').addEventListener('click', async function(){
   autoScan = !autoScan; this.textContent = 'Auto Scan: ' + (autoScan? 'ON':'OFF');
   if(autoScan){
     const loop = async()=>{
       if(!autoScan) return;
-      const procMat = processFrame();
-      if(procMat){
-        const cleaned = await runTesseract(procMat);
-        ocrTextDiv.textContent = cleaned;
-        const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-        const matched = targets.includes(cleaned);
-        resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-        resultDiv.className = 'status ' + (matched ? 'ok' : 'fail');
-        if (matched) {
-          if ("vibrate" in navigator) {
-            navigator.vibrate(200);
+      if(!ocrBusy){
+        const procMat = processFrame();
+        if(procMat){
+          ocrBusy = true;
+          try{
+            const cleaned = await runTesseract(procMat);
+            const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
+            const {best, dist} = bestFuzzy(targets, cleaned);
+            const matched = !!best && dist <= 1.2;
+
+            ocrTextDiv.textContent = matched 
+              ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
+              : cleaned;
+
+            resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+            resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
+
+            if (matched){
+              if ("vibrate" in navigator) navigator. vibrate(200);
+              autoScan = false;
+              $('#toggleAuto').textContent = 'Auto Scan: OFF';
+            }
+          } finally {
+            procMat.delete();
+            ocrBusy = false;
           }
-          autoScan = false;
         }
-        procMat.delete();
       }
-      if(autoScan) autoTimer = setTimeout(loop, 600);
+      if(autoScan) autoTimer = setTimeout(loop, 500); // giảm nhịp OCR
     };
     loop();
   } else { if(autoTimer) clearTimeout(autoTimer); }
