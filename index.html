@@ -22,7 +22,6 @@ video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; bo
 .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
 .status{ font-weight:700; font-size:16px; }
 .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
-/* thêm màu cảnh báo cho batch lệch */
 .warn{ color:#d97706; }
 canvas{ display:none; }
 .preview{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; margin-top:8px; }
@@ -57,7 +56,6 @@ canvas{ display:none; }
 
 <div class="mini">
   <button id="openBtn">Bật camera</button>
-  
   <button id="toggleAuto">Auto Scan: OFF</button>
   <span id="loader" class="muted">Templates: chưa tải</span>
 </div>
@@ -67,7 +65,6 @@ canvas{ display:none; }
   <canvas id="crossOverlay"></canvas>
 </div>
 
-<!-- Cụm Chụp + Kết quả -->
 <div class="mini">
   <button id="captureBtn">📷 Chụp & OCR</button>
   <span id="result" class="status muted">—</span>
@@ -192,7 +189,7 @@ function getRoiFromPlusSign(){
   return {x:Math.round(x), y:Math.round(y), w:roiWidth, h:roiHeight};
 }
 
-/* ======= Image Processing (tối ưu độ nét) ======= */
+/* ======= Image Processing (tối ưu độ nét & làm sạch nền) ======= */
 function processFrame(){
   if(!cvReady || video.readyState<2) return null;
   const rctx = rawCanvas.getContext('2d');
@@ -202,20 +199,21 @@ function processFrame(){
   const {x,y,w,h} = getRoiFromPlusSign();
   let roi = src.roi(new cv.Rect(x,y,w,h));
 
+  // Chuyển grayscale
   let gray = new cv.Mat();
   cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
 
-  // CLAHE: tăng tương phản cục bộ (why: nền carton, mực mờ)
+  // CLAHE: tăng tương phản cục bộ
   let claheMat = new cv.Mat();
   try {
     const clahe = new cv.CLAHE(2.0, new cv.Size(8,8));
     clahe.apply(gray, claheMat);
     clahe.delete && clahe.delete();
   } catch(e){
-    claheMat = gray.clone(); // fallback nếu build OpenCV thiếu CLAHE
+    claheMat = gray.clone();
   }
 
-  // Unsharp mask: nét đậm hơn
+  // Unsharp mask: làm nét chữ
   let gauss = new cv.Mat(), sharp = new cv.Mat();
   cv.GaussianBlur(claheMat, gauss, new cv.Size(0,0), 1.0);
   cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
@@ -224,27 +222,25 @@ function processFrame(){
   let up = new cv.Mat();
   cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
 
-  // Threshold OTSU (ổn định hơn adaptive khi nền đều)
+  // Làm mượt nền
+  cv.GaussianBlur(up, up, new cv.Size(3,3), 0);
+
+  // Adaptive threshold để bỏ nền carton
   let bin = new cv.Mat();
-  cv.threshold(up, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+  cv.adaptiveThreshold(up, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 15);
 
   // Đảm bảo chữ đen nền trắng
   let mean = cv.mean(bin)[0];
-  let bw = new cv.Mat();
-  if(mean > 127){
-    bw = bin.clone();
-  } else {
-    cv.bitwise_not(bin, bw);
-  }
+  if(mean < 127) cv.bitwise_not(bin, bin);
 
-  // Close để liền nét + lọc nhiễu nhỏ
-  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
-  let closed = new cv.Mat();
-  cv.morphologyEx(bw, closed, cv.MORPH_CLOSE, kernel);
+  // Morphology open: loại nhiễu nhỏ
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
+  let cleaned = new cv.Mat();
+  cv.morphologyEx(bin, cleaned, cv.MORPH_OPEN, kernel);
 
-  // Padding viền
+  // Padding viền trắng
   let bordered = new cv.Mat();
-  cv.copyMakeBorder(closed, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
+  cv.copyMakeBorder(cleaned, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
 
   // Preview
   cv.imshow($('#cropPreview'), roi);
@@ -252,7 +248,7 @@ function processFrame(){
 
   // Cleanup
   src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete(); up.delete();
-  bin.delete(); bw.delete(); kernel.delete(); closed.delete();
+  bin.delete(); kernel.delete(); cleaned.delete();
 
   return bordered; // caller phải .delete()
 }
