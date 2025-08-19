@@ -269,19 +269,26 @@
       cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
 
       // Upscale x3
-      let up = new cv.Mat();
-      cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
-
-      // OTSU
-      let bin = new cv.Mat();
-      thresh = cv2.adaptiveThreshold(
-          blur, 
-          255, 
-          cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-          cv2.THRESH_BINARY, 
-          31, 10
-      )
-
+        let up = new cv.Mat();
+        cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
+        
+        // Chuyển sang grayscale
+        let gray = new cv.Mat();
+        cv.cvtColor(up, gray, cv.COLOR_RGBA2GRAY, 0);
+        
+        // Adaptive Threshold
+        let bin = new cv.Mat();
+        cv.adaptiveThreshold(
+            gray, bin,
+            255,
+            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv.THRESH_BINARY,
+            31, 10
+        );
+        
+        // Morphology để làm dày chữ, loại nhiễu nhỏ
+        let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
+        cv.morphologyEx(bin, bin, cv.MORPH_OPEN, kernel);
       // Nền trắng, chữ đen
       let mean = cv.mean(bin)[0];
       let bw = new cv.Mat();
