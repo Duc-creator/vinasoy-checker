@@ -203,7 +203,7 @@ function processFrame(){
   let gray = new cv.Mat();
   cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
 
-  // CLAHE: tăng tương phản cục bộ
+  // CLAHE
   let claheMat = new cv.Mat();
   try {
     const clahe = new cv.CLAHE(2.0, new cv.Size(8,8));
@@ -213,7 +213,7 @@ function processFrame(){
     claheMat = gray.clone();
   }
 
-  // Unsharp mask: làm nét chữ
+  // Unsharp mask
   let gauss = new cv.Mat(), sharp = new cv.Mat();
   cv.GaussianBlur(claheMat, gauss, new cv.Size(0,0), 1.0);
   cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
@@ -225,7 +225,7 @@ function processFrame(){
   // Làm mượt nền
   cv.GaussianBlur(up, up, new cv.Size(3,3), 0);
 
-  // Adaptive threshold để bỏ nền carton
+  // Adaptive threshold
   let bin = new cv.Mat();
   cv.adaptiveThreshold(up, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 15);
 
@@ -233,10 +233,29 @@ function processFrame(){
   let mean = cv.mean(bin)[0];
   if(mean < 127) cv.bitwise_not(bin, bin);
 
-  // Morphology open: loại nhiễu nhỏ
+  // Morphology open
   let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
-  let cleaned = new cv.Mat();
-  cv.morphologyEx(bin, cleaned, cv.MORPH_OPEN, kernel);
+  let opened = new cv.Mat();
+  cv.morphologyEx(bin, opened, cv.MORPH_OPEN, kernel);
+
+  // *** Bước mới: lọc bỏ blob nhỏ bằng connectedComponents ***
+  let labels = new cv.Mat();
+  let stats  = new cv.Mat();
+  let centroids = new cv.Mat();
+  let nLabels = cv.connectedComponentsWithStats(opened, labels, stats, centroids, 8);
+
+  let cleaned = cv.Mat.zeros(opened.rows, opened.cols, cv.CV_8UC1);
+  for (let i = 1; i < nLabels; i++) {
+    let area = stats.intAt(i, cv.CC_STAT_AREA);
+    if (area > 30) { // giữ blob lớn, loại noise nhỏ
+      let mask = new cv.Mat();
+      cv.compare(labels, i, mask, cv.CMP_EQ);
+      opened.copyTo(cleaned, mask);
+      mask.delete();
+    }
+  }
+
+  labels.delete(); stats.delete(); centroids.delete();
 
   // Padding viền trắng
   let bordered = new cv.Mat();
@@ -248,7 +267,7 @@ function processFrame(){
 
   // Cleanup
   src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete(); up.delete();
-  bin.delete(); kernel.delete(); cleaned.delete();
+  bin.delete(); kernel.delete(); opened.delete(); cleaned.delete();
 
   return bordered; // caller phải .delete()
 }
