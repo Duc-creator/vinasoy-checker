@@ -22,36 +22,11 @@ video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; bo
 .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
 .status{ font-weight:700; font-size:16px; }
 .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
+/* thêm màu cảnh báo cho batch lệch */
+.warn{ color:#d97706; }
 canvas{ display:none; }
 .preview{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; margin-top:8px; }
-.box{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:8px; }
-.box h3{ margin:0 0 6px 0; font-size:13px; color:#374151; }
-.box canvas{ display:block; width:220px; height:auto; border-radius:8px; }
-.tip{ font-size:12px; color:#6b7280; }
-</style>
-</head>
-<body>
-<div class="wrap">
-<h1>OCR Date Checker Vinasoy (NĐT)</h1>
-
-<div class="row">
-  <label>Hạn dùng (tháng)
-    <select id="shelfLife"><option value="6">6</option><option value="9">9</option><option value="10">10</option></select>
-  </label>
-  <label>Mã lô (3 ký tự)
-    <input id="batchCode" maxlength="3" placeholder="VD: 086" />
-  </label>
-  <label>Thứ hôm nay
-    <input id="weekday" readonly style="width:60px" />
-  </label>
-  <label class="mini"><input type="checkbox" id="singleLineCheck" /> Chỉ 1 line</label>
-  <label id="lineSelectWrapper" style="display:none;">Line
-    <select id="lineSelect"><option>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option><option>G</option><option>H</option><option>I</option></select>
-  </label>
-  <button id="generateBtn">Tạo danh sách date</button>
-</div>
-
-<textarea id="dateList" placeholder="Danh sách date code..."></textarea>
+@@ -57,7 +56,6 @@
 
 <div class="mini">
   <button id="openBtn">Bật camera</button>
@@ -59,9 +34,7 @@ canvas{ display:none; }
   <button id="toggleAuto">Auto Scan: OFF</button>
   <span id="loader" class="muted">Templates: chưa tải</span>
 </div>
-
-<div class="camera">
-  <video id="video" playsinline muted></video>
+@@ -67,7 +65,6 @@
   <canvas id="crossOverlay"></canvas>
 </div>
 
@@ -69,113 +42,7 @@ canvas{ display:none; }
 <div class="mini">
   <button id="captureBtn">📷 Chụp & OCR</button>
   <span id="result" class="status muted">—</span>
-</div>
-<div id="ocrText" class="tip"></div>
-
-<canvas id="rawCanvas"></canvas>
-<canvas id="cropCanvas"></canvas>
-<canvas id="procCanvas"></canvas>
-
-<div class="preview">
-  <div class="box"><h3>Crop</h3><canvas id="cropPreview" width="220" height="100"></canvas></div>
-  <div class="box"><h3>Processed</h3><canvas id="procPreview" width="220" height="100"></canvas></div>
-</div>
-
-<p class="tip">Mẹo: Đặt đối tượng ngay tại dấu cộng để OCR nhanh và chính xác.</p>
-</div>
-
-<script async src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCvReady()"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-<script>
-/* ======= DOM & STATE ======= */
-const $ = (s) => document.querySelector(s);
-const video = $('#video');
-const crossOverlay = $('#crossOverlay');
-const resultDiv = $('#result');
-const ocrTextDiv = $('#ocrText');
-const rawCanvas = $('#rawCanvas');
-let autoScan = false, autoTimer = null;
-let cvReady = false;
-let ocrBusy = false;
-
-/* Tesseract worker (khởi tạo một lần) */
-let worker = null;
-let workerReady = false;
-
-/* ======= UI ======= */
-function drawCross(){
-  const ctx = crossOverlay.getContext('2d');
-  ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
-  ctx.strokeStyle = 'rgba(255,0,0,0.95)'; 
-  ctx.lineWidth = 3; 
-  const centerX = crossOverlay.width / 2;
-  const centerY = crossOverlay.height / 2;
-  const vLen = 50, hLen = 50;
-  ctx.beginPath(); ctx.moveTo(centerX - hLen/2, centerY); ctx.lineTo(centerX + hLen/2, centerY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(centerX, centerY - vLen/2); ctx.lineTo(centerX, centerY + vLen/2); ctx.stroke();
-}
-window.addEventListener('resize', ()=>{ 
-  // Vì video element thay đổi kích thước theo viewport
-  crossOverlay.width = video.clientWidth;
-  crossOverlay.height = video.clientHeight;
-  drawCross();
-});
-
-function updateWeekday(){
-  const d=new Date();
-  const day=d.getDay();
-  const weekday=(day===0)?1:day+1;
-  $('#weekday').value=weekday;
-}
-updateWeekday();
-
-function addMonthsAdjust(date, months){
-  const y=date.getFullYear();
-  const m=date.getMonth();
-  const day=date.getDate();
-  const nm=m+months;
-  const nd=new Date(y, nm, 1);
-  const last=new Date(nd.getFullYear(), nd.getMonth()+1, 0).getDate();
-  return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last));
-}
-
-$('#generateBtn').addEventListener('click', ()=>{
-  const batchCode = $('#batchCode').value.trim();
-  const weekday = $('#weekday').value;
-  const shelfMonths = parseInt($('#shelfLife').value);
-  const singleLine = $('#singleLineCheck').checked;
-  const line = $('#lineSelect').value;
-  if(batchCode.length!==3){ alert('Nhập mã lô 3 ký tự'); return; }
-  const expiry = addMonthsAdjust(new Date(), shelfMonths);
-  const dd=String(expiry.getDate()).padStart(2,'0');
-  const mm=String(expiry.getMonth()+1).padStart(2,'0');
-  const yy=String(expiry.getFullYear()).slice(2);
-  const dateCode = dd+mm+yy;
-  let res='';
-  if(singleLine){ res = `${dateCode} ${batchCode}${line}${weekday}`; }
-  else{ ['A','B','C','D','E','F','G','H','I'].forEach(L=>res+=`${dateCode} ${batchCode}${L}${weekday}\n`); res=res.trim(); }
-  $('#dateList').value = res;
-});
-$('#singleLineCheck').addEventListener('change', function(){ $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none'; });
-
-/* ======= Camera & OpenCV ======= */
-async function openCamera(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({video: { facingMode: { ideal: 'environment' } }, audio:false});
-    video.srcObject = stream; 
-    await video.play();
-    crossOverlay.width = video.clientWidth;
-    crossOverlay.height = video.clientHeight;
-    rawCanvas.width = video.videoWidth; 
-    rawCanvas.height = video.videoHeight;
-    drawCross();
-  }catch(err){ alert('Không mở được camera: '+err.message); }
-}
-$('#openBtn').addEventListener('click', openCamera);
-
-function onOpenCvReady(){
-  cv['onRuntimeInitialized']=()=>{
-    cvReady=true;
+@@ -181,41 +178,42 @@
     $('#loader').textContent='OpenCV: ready';
   };
 }
@@ -191,6 +58,7 @@ function getRoiFromPlusSign(){
 }
 
 /* ======= Image Processing (tối ưu độ nét) ======= */
+/* ======= Image Processing (tối ưu độ nét & làm sạch nền) ======= */
 function processFrame(){
   if(!cvReady || video.readyState<2) return null;
   const rctx = rawCanvas.getContext('2d');
@@ -200,10 +68,12 @@ function processFrame(){
   const {x,y,w,h} = getRoiFromPlusSign();
   let roi = src.roi(new cv.Rect(x,y,w,h));
 
+  // Chuyển grayscale
   let gray = new cv.Mat();
   cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
 
   // CLAHE: tăng tương phản cục bộ (why: nền carton, mực mờ)
+  // CLAHE: tăng tương phản cục bộ
   let claheMat = new cv.Mat();
   try {
     const clahe = new cv.CLAHE(2.0, new cv.Size(8,8));
@@ -211,38 +81,51 @@ function processFrame(){
     clahe.delete && clahe.delete();
   } catch(e){
     claheMat = gray.clone(); // fallback nếu build OpenCV thiếu CLAHE
+    claheMat = gray.clone();
   }
 
   // Unsharp mask: nét đậm hơn
+  // Unsharp mask: làm nét chữ
   let gauss = new cv.Mat(), sharp = new cv.Mat();
   cv.GaussianBlur(claheMat, gauss, new cv.Size(0,0), 1.0);
   cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
-
-  // Upscale x3
+@@ -224,295 +222,293 @@
   let up = new cv.Mat();
   cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
 
   // Threshold OTSU (ổn định hơn adaptive khi nền đều)
+  // Làm mượt nền
+  cv.GaussianBlur(up, up, new cv.Size(3,3), 0);
+
+  // Adaptive threshold để bỏ nền carton
   let bin = new cv.Mat();
   cv.threshold(up, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+  cv.adaptiveThreshold(up, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 15);
 
   // Đảm bảo chữ đen nền trắng
   let mean = cv.mean(bin)[0];
   let bw = new cv.Mat();
-  if(mean > 127){ // phần lớn pixel trắng -> text đen, ok
+  if(mean > 127){
     bw = bin.clone();
   } else {
     cv.bitwise_not(bin, bw);
   }
+  if(mean < 127) cv.bitwise_not(bin, bin);
 
   // Close để liền nét + lọc nhiễu nhỏ
   let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
   let closed = new cv.Mat();
   cv.morphologyEx(bw, closed, cv.MORPH_CLOSE, kernel);
+  // Morphology open: loại nhiễu nhỏ
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
+  let cleaned = new cv.Mat();
+  cv.morphologyEx(bin, cleaned, cv.MORPH_OPEN, kernel);
 
   // Padding viền
+  // Padding viền trắng
   let bordered = new cv.Mat();
   cv.copyMakeBorder(closed, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
+  cv.copyMakeBorder(cleaned, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
 
   // Preview
   cv.imshow($('#cropPreview'), roi);
@@ -251,6 +134,7 @@ function processFrame(){
   // Cleanup
   src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete(); up.delete();
   bin.delete(); bw.delete(); kernel.delete(); closed.delete();
+  bin.delete(); kernel.delete(); cleaned.delete();
 
   return bordered; // caller phải .delete()
 }
@@ -275,7 +159,6 @@ async function ensureWorker(){
 /* ======= Fuzzy match có trọng số ======= */
 function charSubCost(a,b,pos){
   if(a===b) return 0;
-  // cặp hay nhầm
   const pair = a+b, pairR = b+a;
   const soft = new Set(['0O','O0','5S','S5','8B','B8','90','09']);
   if(soft.has(pair) || soft.has(pairR)) return 0.4;
@@ -337,6 +220,49 @@ function postProcess(text){
   return regex.test(fixed) ? fixed: cleaned;
 }
 
+/* ======= Ưu tiên tuyệt đối ddMMyy ======= */
+/* why: đảm bảo quyết định dựa trên HSD trước, tránh fuzzy gây nhầm */
+function getDatePart(code){
+  if(!code) return '';
+  return code.replace(/\s+/g,'').slice(0,6); // ddMMyy
+}
+function getExpectedDate(targets){
+  const first = targets.find(Boolean);
+  return first ? getDatePart(first) : '';
+}
+/**
+ * Đánh giá quyết định theo rule:
+ * - date khác -> SAI
+ * - date đúng & full trùng -> ĐÚNG
+ * - date đúng & full KHÁC -> CẢNH BÁO (đúng HSD, lệch batch)
+ */
+function evaluateDecision(cleaned, targets){
+  const expectedDate = getExpectedDate(targets);
+  const gotDate = getDatePart(cleaned);
+  if(!expectedDate || gotDate.length<6 || !/^\d{6}$/.test(gotDate)){
+    return { verdict:'date_mismatch', expectedDate, gotDate };
+  }
+  if(gotDate !== expectedDate){
+    return { verdict:'date_mismatch', expectedDate, gotDate };
+  }
+  const exact = targets.includes(cleaned);
+  if(exact){
+    return { verdict:'exact', expectedDate, gotDate };
+  }
+  return { verdict:'date_match_batch_diff', expectedDate, gotDate };
+}
+
+/* ======= Âm thanh báo hiệu (đúng/sai) ======= */
+function playSound(matched){
+  const el = matched ? $('#soundCorrect') : $('#soundWrong');
+  const src = el.currentSrc || el.querySelector('source')?.src;
+  if(!src) return;
+  const vol = 1.0; // why: cần lớn dễ nghe trong môi trường ồn
+  const playOnce = () => { const a = new Audio(src); a.volume = vol; a.play().catch(()=>{}); };
+  playOnce();
+  setTimeout(playOnce, 140);
+}
+
 /* ======= OCR ======= */
 async function runTesseract(procMat){
   await ensureWorker();
@@ -346,7 +272,7 @@ async function runTesseract(procMat){
   cv.imshow(tmpCanvas, procMat);
 
   const { data: { text } } = await worker.recognize(tmpCanvas);
-  tmpCanvas.width = tmpCanvas.height = 0; // giải phóng
+  tmpCanvas.width = tmpCanvas.height = 0;
   tmpCanvas.remove();
   return postProcess(text);
 }
@@ -360,18 +286,32 @@ async function captureOnce(){
   try{
     const cleaned = await runTesseract(procMat);
     const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-    const {best, dist} = bestFuzzy(targets, cleaned);
-    const matched = !!best && dist <= 1.2;
 
-    // UI
-    ocrTextDiv.textContent = matched 
+    // fuzzy chỉ để tham khảo hiển thị
+    const {best, dist} = bestFuzzy(targets, cleaned);
+
+    // Quyết định theo ưu tiên ddMMyy
+    const decision = evaluateDecision(cleaned, targets);
+
+    // UI hiển thị: thêm date got/expected để rõ ràng
+    const info = best 
       ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
       : cleaned;
+    ocrTextDiv.textContent = `[got:${decision.gotDate||'—'} vs exp:${decision.expectedDate||'—'}]  ${info}`;
 
-    resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-    resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
+    if(decision.verdict === 'exact'){
+      resultDiv.textContent = '✅ ĐÚNG';
+      resultDiv.className = 'status ok';
+    } else if(decision.verdict === 'date_match_batch_diff'){
+      resultDiv.textContent = '⚠️ ĐÚNG HSD, LỆCH BATCH';
+      resultDiv.className = 'status warn';
+    } else {
+      resultDiv.textContent = '❌ SAI';
+      resultDiv.className = 'status fail';
+    }
 
-    if (matched && "vibrate" in navigator) navigator.vibrate(200);
+    playSound(decision.verdict === 'exact');
+    if (decision.verdict === 'exact' && "vibrate" in navigator) navigator.vibrate(200);
   } finally {
     procMat.delete();
     ocrBusy = false;
@@ -392,18 +332,31 @@ $('#toggleAuto').addEventListener('click', async function(){
           try{
             const cleaned = await runTesseract(procMat);
             const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-            const {best, dist} = bestFuzzy(targets, cleaned);
-            const matched = !!best && dist <= 1.2;
 
-            ocrTextDiv.textContent = matched 
+            const {best, dist} = bestFuzzy(targets, cleaned);
+            const decision = evaluateDecision(cleaned, targets);
+
+            const info = best 
               ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
               : cleaned;
+            ocrTextDiv.textContent = `[got:${decision.gotDate||'—'} vs exp:${decision.expectedDate||'—'}]  ${info}`;
 
-            resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
-            resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
+            if(decision.verdict === 'exact'){
+              resultDiv.textContent = '✅ ĐÚNG';
+              resultDiv.className = 'status ok';
+            } else if(decision.verdict === 'date_match_batch_diff'){
+              resultDiv.textContent = '⚠️ ĐÚNG HSD, LỆCH BATCH';
+              resultDiv.className = 'status warn';
+            } else {
+              resultDiv.textContent = '❌ SAI';
+              resultDiv.className = 'status fail';
+            }
 
-            if (matched){
-              if ("vibrate" in navigator) navigator. vibrate(200);
+            playSound(decision.verdict === 'exact');
+
+            // chỉ dừng Auto khi ĐÚNG hoàn toàn
+            if (decision.verdict === 'exact'){
+              if ("vibrate" in navigator) navigator.vibrate(200);
               autoScan = false;
               $('#toggleAuto').textContent = 'Auto Scan: OFF';
             }
@@ -413,11 +366,35 @@ $('#toggleAuto').addEventListener('click', async function(){
           }
         }
       }
-      if(autoScan) autoTimer = setTimeout(loop, 500); // giảm nhịp OCR
+      if(autoScan) autoTimer = setTimeout(loop, 500);
     };
     loop();
   } else { if(autoTimer) clearTimeout(autoTimer); }
 });
+// Unlock audio cho iPhone
+function unlockAudio() {
+  const correct = document.getElementById("soundCorrect");
+  const wrong = document.getElementById("soundWrong");
+  correct.volume = 1.0;
+  wrong.volume = 1.0;
+  correct.currentTime = 0;
+  correct.play().catch(()=>{});
+  wrong.currentTime = 0;
+  wrong.play().catch(()=>{});
+  document.removeEventListener("touchstart", unlockAudio);
+  document.removeEventListener("click", unlockAudio);
+}
+document.addEventListener("touchstart", unlockAudio);
+document.addEventListener("click", unlockAudio);
 </script>
+
+<!-- Âm thanh báo hiệu -->
+<audio id="soundCorrect" preload="auto">
+  <source src="https://actions.google.com/sounds/v1/alarms/beep_short.mp3" type="audio/mp3">
+</audio>
+<audio id="soundWrong" preload="auto">
+  <source src="https://actions.google.com/sounds/v1/alarms/beep_buzzer.mp3" type="audio/mp3">
+</audio>
+
 </body>
 </html>
