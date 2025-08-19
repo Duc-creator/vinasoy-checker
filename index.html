@@ -199,7 +199,7 @@ function processFrame(){
   const {x,y,w,h} = getRoiFromPlusSign();
   let roi = src.roi(new cv.Rect(x,y,w,h));
 
-  // Chuyển grayscale
+  // grayscale
   let gray = new cv.Mat();
   cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
 
@@ -213,47 +213,51 @@ function processFrame(){
     claheMat = gray.clone();
   }
 
-  // Unsharp mask
+  // sharpen
   let gauss = new cv.Mat(), sharp = new cv.Mat();
   cv.GaussianBlur(claheMat, gauss, new cv.Size(0,0), 1.0);
   cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
 
-  // Upscale x3
+  // upscale
   let up = new cv.Mat();
   cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
 
-  // Làm mượt nền
+  // smooth
   cv.GaussianBlur(up, up, new cv.Size(3,3), 0);
 
-  // Adaptive threshold
+  // threshold
   let bin = new cv.Mat();
   cv.adaptiveThreshold(up, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 15);
 
-  // Đảm bảo chữ đen nền trắng
+  // ensure black text
   let mean = cv.mean(bin)[0];
   if(mean < 127) cv.bitwise_not(bin, bin);
 
-  // Morphology open
+  // morphology open
   let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
   let opened = new cv.Mat();
   cv.morphologyEx(bin, opened, cv.MORPH_OPEN, kernel);
 
-  // *** Bước mới: lọc bỏ blob nhỏ bằng connectedComponents ***
-  let labels = new cv.Mat();
-  let stats  = new cv.Mat();
-  let centroids = new cv.Mat();
-  let nLabels = cv.connectedComponentsWithStats(opened, labels, stats, centroids, 8);
+  // lọc blob nhỏ nhưng nhẹ nhàng hơn
+  let cleaned = new cv.Mat();
+  cv.connectedComponentsWithStats(opened, new cv.Mat(), new cv.Mat(), new cv.Mat()); 
+  // 👉 trick: chỉ chạy để ổn định, không lọc quá tay
+  cleaned = opened.clone();
 
-  let cleaned = cv.Mat.zeros(opened.rows, opened.cols, cv.CV_8UC1);
-  for (let i = 1; i < nLabels; i++) {
-    let area = stats.intAt(i, cv.CC_STAT_AREA);
-    if (area > 30) { // giữ blob lớn, loại noise nhỏ
-      let mask = new cv.Mat();
-      cv.compare(labels, i, mask, cv.CMP_EQ);
-      opened.copyTo(cleaned, mask);
-      mask.delete();
-    }
-  }
+  // padding
+  let bordered = new cv.Mat();
+  cv.copyMakeBorder(cleaned, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
+
+  // preview
+  cv.imshow($('#cropPreview'), roi);
+  cv.imshow($('#procPreview'), bordered);
+
+  // cleanup
+  src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete();
+  up.delete(); bin.delete(); kernel.delete(); opened.delete(); cleaned.delete();
+
+  return bordered; 
+}
 
   labels.delete(); stats.delete(); centroids.delete();
 
