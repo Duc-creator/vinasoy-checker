@@ -274,7 +274,13 @@
 
       // OTSU
       let bin = new cv.Mat();
-      cv.threshold(up, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+      thresh = cv2.adaptiveThreshold(
+          blur, 
+          255, 
+          cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+          cv2.THRESH_BINARY, 
+          31, 10
+      )
 
       // Nền trắng, chữ đen
       let mean = cv.mean(bin)[0];
