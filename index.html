@@ -22,7 +22,6 @@ video{ width:var(--w); height:var(--h); object-fit:cover; border-radius:12px; bo
 .mini{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
 .status{ font-weight:700; font-size:16px; }
 .ok{ color:#1f9d55; } .fail{ color:#e11d48; } .muted{ color:#6b7280; font-weight:500; }
-.warn{ color:#d97706; }
 canvas{ display:none; }
 .preview{ display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; margin-top:8px; }
 .box{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:8px; }
@@ -56,6 +55,7 @@ canvas{ display:none; }
 
 <div class="mini">
   <button id="openBtn">Bật camera</button>
+  
   <button id="toggleAuto">Auto Scan: OFF</button>
   <span id="loader" class="muted">Templates: chưa tải</span>
 </div>
@@ -65,6 +65,7 @@ canvas{ display:none; }
   <canvas id="crossOverlay"></canvas>
 </div>
 
+<!-- Cụm Chụp + Kết quả -->
 <div class="mini">
   <button id="captureBtn">📷 Chụp & OCR</button>
   <span id="result" class="status muted">—</span>
@@ -189,7 +190,7 @@ function getRoiFromPlusSign(){
   return {x:Math.round(x), y:Math.round(y), w:roiWidth, h:roiHeight};
 }
 
-/* ======= Image Processing (tối ưu độ nét & làm sạch nền) ======= */
+/* ======= Image Processing (tối ưu độ nét) ======= */
 function processFrame(){
   if(!cvReady || video.readyState<2) return null;
   const rctx = rawCanvas.getContext('2d');
@@ -199,71 +200,49 @@ function processFrame(){
   const {x,y,w,h} = getRoiFromPlusSign();
   let roi = src.roi(new cv.Rect(x,y,w,h));
 
-  // grayscale
   let gray = new cv.Mat();
   cv.cvtColor(roi, gray, cv.COLOR_RGBA2GRAY, 0);
 
-  // CLAHE
+  // CLAHE: tăng tương phản cục bộ (why: nền carton, mực mờ)
   let claheMat = new cv.Mat();
   try {
     const clahe = new cv.CLAHE(2.0, new cv.Size(8,8));
     clahe.apply(gray, claheMat);
     clahe.delete && clahe.delete();
   } catch(e){
-    claheMat = gray.clone();
+    claheMat = gray.clone(); // fallback nếu build OpenCV thiếu CLAHE
   }
 
-  // sharpen
+  // Unsharp mask: nét đậm hơn
   let gauss = new cv.Mat(), sharp = new cv.Mat();
   cv.GaussianBlur(claheMat, gauss, new cv.Size(0,0), 1.0);
   cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
 
-  // upscale
+  // Upscale x3
   let up = new cv.Mat();
   cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
 
-  // smooth
-  cv.GaussianBlur(up, up, new cv.Size(3,3), 0);
-
-  // threshold
+  // Threshold OTSU (ổn định hơn adaptive khi nền đều)
   let bin = new cv.Mat();
-  cv.adaptiveThreshold(up, bin, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 35, 15);
+  cv.threshold(up, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
 
-  // ensure black text
+  // Đảm bảo chữ đen nền trắng
   let mean = cv.mean(bin)[0];
-  if(mean < 127) cv.bitwise_not(bin, bin);
+  let bw = new cv.Mat();
+  if(mean > 127){ // phần lớn pixel trắng -> text đen, ok
+    bw = bin.clone();
+  } else {
+    cv.bitwise_not(bin, bw);
+  }
 
-  // morphology open
-  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2,2));
-  let opened = new cv.Mat();
-  cv.morphologyEx(bin, opened, cv.MORPH_OPEN, kernel);
+  // Close để liền nét + lọc nhiễu nhỏ
+  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3,3));
+  let closed = new cv.Mat();
+  cv.morphologyEx(bw, closed, cv.MORPH_CLOSE, kernel);
 
-  // lọc blob nhỏ nhưng nhẹ nhàng hơn
-  let cleaned = new cv.Mat();
-  cv.connectedComponentsWithStats(opened, new cv.Mat(), new cv.Mat(), new cv.Mat()); 
-  // 👉 trick: chỉ chạy để ổn định, không lọc quá tay
-  cleaned = opened.clone();
-
-  // padding
+  // Padding viền
   let bordered = new cv.Mat();
-  cv.copyMakeBorder(cleaned, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
-
-  // preview
-  cv.imshow($('#cropPreview'), roi);
-  cv.imshow($('#procPreview'), bordered);
-
-  // cleanup
-  src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete();
-  up.delete(); bin.delete(); kernel.delete(); opened.delete(); cleaned.delete();
-
-  return bordered; 
-}
-
-  labels.delete(); stats.delete(); centroids.delete();
-
-  // Padding viền trắng
-  let bordered = new cv.Mat();
-  cv.copyMakeBorder(cleaned, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
+  cv.copyMakeBorder(closed, bordered, 10,10,10,10, cv.BORDER_CONSTANT, new cv.Scalar(255,255,255,255));
 
   // Preview
   cv.imshow($('#cropPreview'), roi);
@@ -271,7 +250,7 @@ function processFrame(){
 
   // Cleanup
   src.delete(); roi.delete(); gray.delete(); claheMat.delete(); gauss.delete(); sharp.delete(); up.delete();
-  bin.delete(); kernel.delete(); opened.delete(); cleaned.delete();
+  bin.delete(); bw.delete(); kernel.delete(); closed.delete();
 
   return bordered; // caller phải .delete()
 }
@@ -296,6 +275,7 @@ async function ensureWorker(){
 /* ======= Fuzzy match có trọng số ======= */
 function charSubCost(a,b,pos){
   if(a===b) return 0;
+  // cặp hay nhầm
   const pair = a+b, pairR = b+a;
   const soft = new Set(['0O','O0','5S','S5','8B','B8','90','09']);
   if(soft.has(pair) || soft.has(pairR)) return 0.4;
@@ -357,49 +337,6 @@ function postProcess(text){
   return regex.test(fixed) ? fixed: cleaned;
 }
 
-/* ======= Ưu tiên tuyệt đối ddMMyy ======= */
-/* why: đảm bảo quyết định dựa trên HSD trước, tránh fuzzy gây nhầm */
-function getDatePart(code){
-  if(!code) return '';
-  return code.replace(/\s+/g,'').slice(0,6); // ddMMyy
-}
-function getExpectedDate(targets){
-  const first = targets.find(Boolean);
-  return first ? getDatePart(first) : '';
-}
-/**
- * Đánh giá quyết định theo rule:
- * - date khác -> SAI
- * - date đúng & full trùng -> ĐÚNG
- * - date đúng & full KHÁC -> CẢNH BÁO (đúng HSD, lệch batch)
- */
-function evaluateDecision(cleaned, targets){
-  const expectedDate = getExpectedDate(targets);
-  const gotDate = getDatePart(cleaned);
-  if(!expectedDate || gotDate.length<6 || !/^\d{6}$/.test(gotDate)){
-    return { verdict:'date_mismatch', expectedDate, gotDate };
-  }
-  if(gotDate !== expectedDate){
-    return { verdict:'date_mismatch', expectedDate, gotDate };
-  }
-  const exact = targets.includes(cleaned);
-  if(exact){
-    return { verdict:'exact', expectedDate, gotDate };
-  }
-  return { verdict:'date_match_batch_diff', expectedDate, gotDate };
-}
-
-/* ======= Âm thanh báo hiệu (đúng/sai) ======= */
-function playSound(matched){
-  const el = matched ? $('#soundCorrect') : $('#soundWrong');
-  const src = el.currentSrc || el.querySelector('source')?.src;
-  if(!src) return;
-  const vol = 1.0; // why: cần lớn dễ nghe trong môi trường ồn
-  const playOnce = () => { const a = new Audio(src); a.volume = vol; a.play().catch(()=>{}); };
-  playOnce();
-  setTimeout(playOnce, 140);
-}
-
 /* ======= OCR ======= */
 async function runTesseract(procMat){
   await ensureWorker();
@@ -409,7 +346,7 @@ async function runTesseract(procMat){
   cv.imshow(tmpCanvas, procMat);
 
   const { data: { text } } = await worker.recognize(tmpCanvas);
-  tmpCanvas.width = tmpCanvas.height = 0;
+  tmpCanvas.width = tmpCanvas.height = 0; // giải phóng
   tmpCanvas.remove();
   return postProcess(text);
 }
@@ -423,32 +360,18 @@ async function captureOnce(){
   try{
     const cleaned = await runTesseract(procMat);
     const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-
-    // fuzzy chỉ để tham khảo hiển thị
     const {best, dist} = bestFuzzy(targets, cleaned);
+    const matched = !!best && dist <= 1.2;
 
-    // Quyết định theo ưu tiên ddMMyy
-    const decision = evaluateDecision(cleaned, targets);
-
-    // UI hiển thị: thêm date got/expected để rõ ràng
-    const info = best 
+    // UI
+    ocrTextDiv.textContent = matched 
       ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
       : cleaned;
-    ocrTextDiv.textContent = `[got:${decision.gotDate||'—'} vs exp:${decision.expectedDate||'—'}]  ${info}`;
 
-    if(decision.verdict === 'exact'){
-      resultDiv.textContent = '✅ ĐÚNG';
-      resultDiv.className = 'status ok';
-    } else if(decision.verdict === 'date_match_batch_diff'){
-      resultDiv.textContent = '⚠️ ĐÚNG HSD, LỆCH BATCH';
-      resultDiv.className = 'status warn';
-    } else {
-      resultDiv.textContent = '❌ SAI';
-      resultDiv.className = 'status fail';
-    }
+    resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+    resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
 
-    playSound(decision.verdict === 'exact');
-    if (decision.verdict === 'exact' && "vibrate" in navigator) navigator.vibrate(200);
+    if (matched && "vibrate" in navigator) navigator.vibrate(200);
   } finally {
     procMat.delete();
     ocrBusy = false;
@@ -469,31 +392,18 @@ $('#toggleAuto').addEventListener('click', async function(){
           try{
             const cleaned = await runTesseract(procMat);
             const targets = $('#dateList').value.split('\n').map(v=>v.trim()).filter(Boolean);
-
             const {best, dist} = bestFuzzy(targets, cleaned);
-            const decision = evaluateDecision(cleaned, targets);
+            const matched = !!best && dist <= 1.2;
 
-            const info = best 
+            ocrTextDiv.textContent = matched 
               ? `${cleaned}  ≈  ${best}  (score ${dist.toFixed(2)})`
               : cleaned;
-            ocrTextDiv.textContent = `[got:${decision.gotDate||'—'} vs exp:${decision.expectedDate||'—'}]  ${info}`;
 
-            if(decision.verdict === 'exact'){
-              resultDiv.textContent = '✅ ĐÚNG';
-              resultDiv.className = 'status ok';
-            } else if(decision.verdict === 'date_match_batch_diff'){
-              resultDiv.textContent = '⚠️ ĐÚNG HSD, LỆCH BATCH';
-              resultDiv.className = 'status warn';
-            } else {
-              resultDiv.textContent = '❌ SAI';
-              resultDiv.className = 'status fail';
-            }
+            resultDiv.textContent = matched ? '✅ ĐÚNG' : '❌ SAI';
+            resultDiv.className = 'status ' + (matched ? 'ok': 'fail');
 
-            playSound(decision.verdict === 'exact');
-
-            // chỉ dừng Auto khi ĐÚNG hoàn toàn
-            if (decision.verdict === 'exact'){
-              if ("vibrate" in navigator) navigator.vibrate(200);
+            if (matched){
+              if ("vibrate" in navigator) navigator. vibrate(200);
               autoScan = false;
               $('#toggleAuto').textContent = 'Auto Scan: OFF';
             }
@@ -503,35 +413,11 @@ $('#toggleAuto').addEventListener('click', async function(){
           }
         }
       }
-      if(autoScan) autoTimer = setTimeout(loop, 500);
+      if(autoScan) autoTimer = setTimeout(loop, 500); // giảm nhịp OCR
     };
     loop();
   } else { if(autoTimer) clearTimeout(autoTimer); }
 });
-// Unlock audio cho iPhone
-function unlockAudio() {
-  const correct = document.getElementById("soundCorrect");
-  const wrong = document.getElementById("soundWrong");
-  correct.volume = 1.0;
-  wrong.volume = 1.0;
-  correct.currentTime = 0;
-  correct.play().catch(()=>{});
-  wrong.currentTime = 0;
-  wrong.play().catch(()=>{});
-  document.removeEventListener("touchstart", unlockAudio);
-  document.removeEventListener("click", unlockAudio);
-}
-document.addEventListener("touchstart", unlockAudio);
-document.addEventListener("click", unlockAudio);
 </script>
-
-<!-- Âm thanh báo hiệu -->
-<audio id="soundCorrect" preload="auto">
-  <source src="https://actions.google.com/sounds/v1/alarms/beep_short.mp3" type="audio/mp3">
-</audio>
-<audio id="soundWrong" preload="auto">
-  <source src="https://actions.google.com/sounds/v1/alarms/beep_buzzer.mp3" type="audio/mp3">
-</audio>
-
 </body>
 </html>
