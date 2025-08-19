@@ -66,6 +66,15 @@
         </select>
       </label>
 
+      <!-- NEW: chọn ngày SX khác today -->
+      <label class="mini">
+        <input type="checkbox" id="useCustomDate" /> Chọn ngày SX
+      </label>
+      <label id="mfgDateWrapper" style="display:none;">
+        Ngày sản xuất
+        <input type="date" id="mfgDate" />
+      </label>
+
       <button id="generateBtn">Tạo danh sách date</button>
     </div>
 
@@ -165,8 +174,19 @@
       return new Date(nd.getFullYear(), nd.getMonth(), Math.min(day,last));
     }
 
+    // Hiển thị chọn Line khi "Chỉ 1 line"
+    $('#singleLineCheck').addEventListener('change', function(){
+      $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none';
+    });
+
+    // NEW: bật/tắt input ngày SX
+    $('#useCustomDate').addEventListener('change', function(){
+      $('#mfgDateWrapper').style.display = this.checked ? 'inline-block' : 'none';
+    });
+
     $('#generateBtn').addEventListener('click', ()=>{
       const batchCode = $('#batchCode').value.trim();
+      updateWeekday();
       const weekday = $('#weekday').value;
       const shelfMonths = parseInt($('#shelfLife').value, 10);
       const singleLine = $('#singleLineCheck').checked;
@@ -177,7 +197,19 @@
         return;
       }
 
-      const expiry = addMonthsAdjust(new Date(), shelfMonths);
+      // NEW: Ngày sản xuất (tick = dùng ngày chọn; không tick = today)
+      let manufactureDate = new Date();
+      if($('#useCustomDate').checked){
+        const mfgInput = $('#mfgDate').value;
+        if(!mfgInput){
+          alert('Chọn ngày sản xuất');
+          return;
+        }
+        manufactureDate = new Date(mfgInput);
+      }
+
+      // Tính hạn dùng từ ngày SX
+      const expiry = addMonthsAdjust(manufactureDate, shelfMonths);
       const dd=String(expiry.getDate()).padStart(2,'0');
       const mm=String(expiry.getMonth()+1).padStart(2,'0');
       const yy=String(expiry.getFullYear()).slice(2);
@@ -193,10 +225,6 @@
         res=res.trim();
       }
       $('#dateList').value = res;
-    });
-
-    $('#singleLineCheck').addEventListener('change', function(){
-      $('#lineSelectWrapper').style.display = this.checked? 'inline-block':'none';
     });
 
     /* ======= Camera & OpenCV ======= */
@@ -269,26 +297,13 @@
       cv.addWeighted(claheMat, 1.5, gauss, -0.5, 0, sharp);
 
       // Upscale x3
-        let up = new cv.Mat();
-        cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
-        
-        // Chuyển sang grayscale
-        let gray = new cv.Mat();
-        cv.cvtColor(up, gray, cv.COLOR_RGBA2GRAY, 0);
-        
-        // Adaptive Threshold
-        let bin = new cv.Mat();
-        cv.adaptiveThreshold(
-            gray, bin,
-            255,
-            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv.THRESH_BINARY,
-            31, 10
-        );
-        
-        // Morphology để làm dày chữ, loại nhiễu nhỏ
-        let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
-        cv.morphologyEx(bin, bin, cv.MORPH_OPEN, kernel);
+      let up = new cv.Mat();
+      cv.resize(sharp, up, new cv.Size(sharp.cols*3, sharp.rows*3), 0, 0, cv.INTER_CUBIC);
+
+      // OTSU
+      let bin = new cv.Mat();
+      cv.threshold(up, bin, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+
       // Nền trắng, chữ đen
       let mean = cv.mean(bin)[0];
       let bw = new cv.Mat();
@@ -350,9 +365,9 @@
         for(let j=1;j<=m;j++){
           const cost = charSubCost(a[i-1], b[j-1], j-1);
           dp[i][j] = Math.min(
-            dp[i-1][j] + 1,      // delete
-            dp[i][j-1] + 1,      // insert
-            dp[i-1][j-1] + cost  // substitute
+            dp[i-1][j] + 1,
+            dp[i][j-1] + 1,
+            dp[i-1][j-1] + cost
           );
         }
       }
@@ -545,6 +560,31 @@
     }
     document.addEventListener("touchstart", unlockAudio, { once: true });
     document.addEventListener("click", unlockAudio, { once: true });
+    function calcWeekday(d){
+  const day = d.getDay();
+  return (day === 0) ? 1 : day + 1; // Chủ nhật=1, còn lại +1
+}
+
+function updateWeekday(){
+  let d = new Date();
+  if($('#useCustomDate').checked){
+    let mfgInput = $('#mfgDate').value;
+    if(mfgInput){
+      d = new Date(mfgInput);
+    }
+  }
+  $('#weekday').value = calcWeekday(d);
+}
+
+// Lần đầu load
+updateWeekday();
+
+$('#useCustomDate').addEventListener('change', function(){
+  $('#mfgDateWrapper').style.display = this.checked ? 'inline-block' : 'none';
+  updateWeekday();
+});
+
+$('#mfgDate').addEventListener('change', updateWeekday);
   </script>
 
   <!-- Âm thanh báo hiệu -->
