@@ -1,33 +1,36 @@
+<!-- /index.html -->
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
-<title>OCR Date Checker</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR Date Validator – FINAL</title>
 
 <style>
-:root{ --w: 340px; --h: 240px; }
-body{ font-family: system-ui; background:#f6f7f9; margin:0; }
-.wrap{ max-width:720px; margin:auto; padding:14px; }
+:root{ --w:340px; --h:240px; }
+body{ font-family:system-ui; background:#f6f7f9; margin:0;}
+.wrap{ max-width:720px; margin:auto; padding:14px;}
 
 video{
-  width: var(--w);
-  height: var(--h);
-  max-width: var(--w);
-  max-height: var(--h);
-  object-fit: cover;
-  border-radius: 12px;
-  border: 2px solid #e3e7ee;
+  width:var(--w);
+  height:var(--h);
+  object-fit:cover;
+  border-radius:12px;
+  border:2px solid #e3e7ee;
   background:#000;
 }
 
-.camera{ position:relative; display:inline-block; }
-#crossOverlay{ position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+.camera{ position:relative;}
+#crossOverlay{
+  position:absolute;
+  top:0;left:0;width:100%;height:100%;
+  pointer-events:none;
+}
 
-button{ padding:10px; border-radius:10px; background:#0a7cff; color:#fff; border:none; }
-input,select{ padding:8px; border-radius:8px; border:1px solid #ccc; }
+button{ padding:10px; border-radius:10px; background:#0a7cff; color:#fff; border:none;}
+input,select{ padding:8px; border-radius:8px; border:1px solid #ccc;}
 
-.status{ font-weight:bold; }
+.status{ font-weight:bold;}
 .ok{ color:green }
 .fail{ color:red }
 .warn{ color:orange }
@@ -36,23 +39,39 @@ input,select{ padding:8px; border-radius:8px; border:1px solid #ccc; }
 
 <body>
 <div class="wrap">
+<h2>OCR Date Validator</h2>
 
-<h3>OCR Date Validator</h3>
+<div>
+<input id="batchCode" placeholder="Batch (3 ký tự)" maxlength="3">
+<select id="shelfLife">
+<option value="6">6 tháng</option>
+<option value="9">9 tháng</option>
+<option value="10">10 tháng</option>
+</select>
 
-<input id="weekday" readonly style="width:60px"/>
+<label><input type="checkbox" id="singleLineCheck"> 1 line</label>
 
-<label><input type="checkbox" id="singleLineCheck"/> 1 line</label>
-<label><input type="checkbox" id="useCustomDate"/> chọn ngày</label>
-<input type="date" id="mfgDate"/>
+<select id="lineSelect">
+<option>A</option><option>B</option><option>C</option>
+<option>D</option><option>E</option><option>F</option>
+<option>G</option><option>H</option><option>I</option>
+</select>
 
-<br><br>
+<label><input type="checkbox" id="useCustomDate"> chọn ngày</label>
+<input type="date" id="mfgDate">
+
+<button id="generateBtn">Generate</button>
+</div>
+
+<textarea id="dateList"></textarea>
 
 <button id="openBtn">Bật camera</button>
 <button id="captureBtn">Scan</button>
+<button id="toggleAuto">Auto OFF</button>
 
 <div class="camera">
-  <video id="video" playsinline webkit-playsinline muted></video>
-  <canvas id="crossOverlay"></canvas>
+<video id="video" playsinline muted></video>
+<canvas id="crossOverlay"></canvas>
 </div>
 
 <div id="result" class="status">—</div>
@@ -66,103 +85,84 @@ input,select{ padding:8px; border-radius:8px; border:1px solid #ccc; }
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
 
 <script>
-const $ = s => document.querySelector(s);
-const video = $('#video');
-const crossOverlay = $('#crossOverlay');
-const rawCanvas = $('#rawCanvas');
+const $ = s=>document.querySelector(s);
+const video=$('#video');
+const rawCanvas=$('#rawCanvas');
+const cross=$('#crossOverlay');
 
-let worker=null;
+let worker=null, auto=false;
 
 /* ===== WEEKDAY ===== */
-function calcWeekday(d){
-  const day = d.getDay();
-  return (day===0)?1:day+1;
+function getWeekday(d){
+  const day=d.getDay();
+  return day===0?1:day+1;
 }
 
-function updateWeekday(){
-  let d=new Date();
+/* ===== GENERATE ===== */
+$('#generateBtn').onclick=()=>{
+  const batch=$('#batchCode').value.trim();
+  if(batch.length!==3){alert("Batch 3 ký tự");return;}
+
+  let mfg=new Date();
   if($('#useCustomDate').checked){
     const val=$('#mfgDate').value;
-    if(val) d=new Date(val);
+    if(!val){alert("Chọn ngày");return;}
+    mfg=new Date(val);
   }
-  $('#weekday').value = calcWeekday(d);
-}
 
-updateWeekday();
-$('#useCustomDate').addEventListener('change', updateWeekday);
-$('#mfgDate').addEventListener('change', updateWeekday);
+  const shelf=parseInt($('#shelfLife').value);
+  const exp=new Date(mfg);
+  exp.setMonth(exp.getMonth()+shelf);
 
-/* ===== CROSS ===== */
-function drawCross(){
-  const ctx=crossOverlay.getContext('2d');
-  ctx.clearRect(0,0,crossOverlay.width,crossOverlay.height);
-  const cx=crossOverlay.width/2;
-  const cy=crossOverlay.height/2;
-  ctx.strokeStyle='red';
-  ctx.lineWidth=3;
+  const dd=String(exp.getDate()).padStart(2,'0');
+  const mm=String(exp.getMonth()+1).padStart(2,'0');
+  const yy=String(exp.getFullYear()).slice(2);
 
-  ctx.beginPath();
-  ctx.moveTo(cx-25,cy);
-  ctx.lineTo(cx+25,cy);
-  ctx.stroke();
+  const wd=getWeekday(mfg);
 
-  ctx.beginPath();
-  ctx.moveTo(cx,cy-25);
-  ctx.lineTo(cx,cy+25);
-  ctx.stroke();
-}
+  let out="";
+  if($('#singleLineCheck').checked){
+    out=`${dd} ${mm} ${yy} ${batch}${$('#lineSelect').value}${wd}`;
+  }else{
+    "ABCDEFGHI".split('').forEach(L=>{
+      out+=`${dd} ${mm} ${yy} ${batch}${L}${wd}\n`;
+    });
+  }
+
+  $('#dateList').value=out.trim();
+};
 
 /* ===== CAMERA ===== */
-async function openCamera(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video:{
-        facingMode:{ideal:'environment'},
-        width:{ideal:640},
-        height:{ideal:480}
-      },
-      audio:false
-    });
+$('#openBtn').onclick=async()=>{
+  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  video.srcObject=s;
+  await video.play();
 
-    video.srcObject=stream;
-    video.setAttribute('playsinline', true);
-    video.setAttribute('webkit-playsinline', true);
+  cross.width=video.clientWidth;
+  cross.height=video.clientHeight;
 
-    await video.play();
-
-    video.style.width="340px";
-    video.style.height="240px";
-
-    crossOverlay.width=video.clientWidth;
-    crossOverlay.height=video.clientHeight;
-
-    rawCanvas.width=video.videoWidth;
-    rawCanvas.height=video.videoHeight;
-
-    drawCross();
-
-  }catch(e){
-    alert("Camera lỗi: "+e.message);
-  }
-}
-
-$('#openBtn').addEventListener('click', openCamera);
+  const ctx=cross.getContext('2d');
+  ctx.strokeStyle='red';
+  ctx.beginPath();
+  ctx.moveTo(150,120); ctx.lineTo(190,120);
+  ctx.moveTo(170,100); ctx.lineTo(170,140);
+  ctx.stroke();
+};
 
 /* ===== OCR ===== */
 async function initOCR(){
   if(worker) return;
-  worker = await Tesseract.createWorker();
+  worker=await Tesseract.createWorker();
   await worker.loadLanguage('eng');
   await worker.initialize('eng');
-  await worker.setParameters({
-    tessedit_char_whitelist:'0123456789ABCDEFGHI ',
-    tessedit_pageseg_mode:'7'
-  });
 }
 
 function preprocess(){
   const ctx=rawCanvas.getContext('2d');
-  ctx.drawImage(video,0,0,rawCanvas.width,rawCanvas.height);
+  rawCanvas.width=video.videoWidth;
+  rawCanvas.height=video.videoHeight;
+
+  ctx.drawImage(video,0,0);
 
   let src=cv.imread(rawCanvas);
   let gray=new cv.Mat();
@@ -171,45 +171,59 @@ function preprocess(){
   let bin=new cv.Mat();
   cv.threshold(gray,bin,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU);
 
-  src.delete();
-  gray.delete();
-
+  src.delete(); gray.delete();
   return bin;
 }
 
-function cleanText(t){
-  return t.replace(/\s+/g,' ').trim().toUpperCase().replace(/[^0-9A-I ]/g,'');
+function clean(t){
+  return t.replace(/\s+/g,' ').trim().toUpperCase();
 }
 
 async function scan(){
   await initOCR();
 
-  let mat = preprocess();
+  let mat=preprocess();
 
   let tmp=document.createElement('canvas');
   tmp.width=mat.cols;
   tmp.height=mat.rows;
   cv.imshow(tmp,mat);
 
-  const {data:{text}} = await worker.recognize(tmp);
+  const {data:{text}}=await worker.recognize(tmp);
 
   mat.delete();
   tmp.remove();
 
-  const cleaned = cleanText(text);
+  const c=clean(text);
+  $('#ocrText').textContent=c;
 
-  $('#ocrText').textContent = cleaned;
+  const list=$('#dateList').value.split('\n');
 
-  if(/^\d{2} \d{2} \d{2}/.test(cleaned)){
-    $('#result').textContent="✅ OK";
+  if(list.includes(c)){
+    $('#result').textContent="✅ ĐÚNG";
     $('#result').className="status ok";
   }else{
-    $('#result').textContent="❌ FAIL";
+    $('#result').textContent="❌ SAI";
     $('#result').className="status fail";
   }
 }
 
-$('#captureBtn').addEventListener('click', scan);
+$('#captureBtn').onclick=scan;
+
+/* ===== AUTO ===== */
+$('#toggleAuto').onclick=()=>{
+  auto=!auto;
+  $('#toggleAuto').textContent=auto?"Auto ON":"Auto OFF";
+
+  if(auto){
+    const loop=async()=>{
+      if(!auto) return;
+      await scan();
+      setTimeout(loop,800);
+    };
+    loop();
+  }
+};
 </script>
 
 </body>
